@@ -28,6 +28,7 @@ class OpenaiInterface():
             max_tokens=1024,
             n=1,
             stop=None,
-            temperature=0.5).choices[0].text
+            temperature=0.5)
+        response_text = response_text.choices[0].text
         print("reply: ", response_text)
         return response_text

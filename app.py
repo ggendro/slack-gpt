@@ -31,7 +31,11 @@ bot = SlackBot(client, openai_client)
 # This gets activated when the bot is tagged in a channel    
 @app.event("app_mention")
 def handle_message_events(body, logger):
-    bot.receive_message(body["event"]["channel"], body["event"]["event_ts"], str(body["event"]["text"]).split(">")[1])
+    channel = body["event"]["channel"]
+    thread = body["event"]["ts"] if "thread_ts" not in body["event"] else body["event"]["thread_ts"]
+    message = str(body["event"]["text"]).split(">")[1]
+    
+    bot.receive_message(channel, thread, message)
 
 
 if __name__ == "__main__":
