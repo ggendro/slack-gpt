@@ -15,7 +15,22 @@ Resources:
         AuthType: NONE
       Environment:
         Variables:
-          LOG_LEVEL: DEBUG
+          LOG_LEVEL: !Ref LogLevel
+          BOT_USER_ID: U04QYJPCH5E
       Layers:
         - arn:aws:lambda:ap-southeast-2:017000801446:layer:AWSLambdaPowertoolsPythonV2:19
       Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/SlackGPTBotRole"
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: SlackGPTBotResponse
+Parameters:
+  LogLevel:
+    Type: String
+    Default: INFO
+    Description: Log level
+    AllowedValues:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
+      - CRITICAL
