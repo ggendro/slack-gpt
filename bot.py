@@ -22,11 +22,8 @@ class SlackBot():
         self.save_history = True
 
 
-    def receive_message(self, channel, thread, message):
-        if message.startswith("/"):
-            mode = message.split(" ")[0][1:]
-            message = " ".join(message.split(" ")[1:])
-
+    def receive_message(self, channel, thread, message, mode=None):
+        if mode is not None:
             if mode in self.modes:
                 print("mode: ", mode)
                 self.modes[mode](channel, thread, message)
@@ -51,7 +48,7 @@ class SlackBot():
                     + "help: This message \n"\
                     + "admin: Admin commands \n"\
                     + "prompt: Create a prompt for ChatGPT \n"\
-                    + "dalle2: Create a prompt for DALLE2 \n"\
+                    + "dalle2: Create a prompt for DALLE2 [NOT READY] \n"\
                     + "history: View history of conversations"
         
         self.client.send_message(channel, thread, message)

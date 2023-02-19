@@ -1,5 +1,6 @@
 
 import argparse
+import re
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_bolt import App
 
@@ -27,15 +28,21 @@ openai_client = OpenaiInterface(OPENAI_API_KEY)
 # Bot class
 bot = SlackBot(client, openai_client)
 
+# create regex to catch optional mention and slash command, in any order
+regex = re.compile(r"^\s*(?:<@(.*?)>\s*\/(\w+)|\/(\w+)\s*<@(.*?)>|<@(.*?)>|\/(\w+))")
 
 # This gets activated when the bot is tagged in a channel    
 @app.event("app_mention")
 def handle_message_events(body, logger):
     channel = body["event"]["channel"]
     thread = body["event"]["ts"] if "thread_ts" not in body["event"] else body["event"]["thread_ts"]
-    message = str(body["event"]["text"]).split(">")[1]
+
+    text = body["event"]["text"]
+    pattern = re.findall(regex, text)[0]
+    mode = pattern[1] if len(pattern[1]) > 0 else pattern[2] if len(pattern[2]) > 0 else pattern[5] if len(pattern[5]) > 0 else None
+    message = re.sub(regex, "", text)
     
-    bot.receive_message(channel, thread, message)
+    bot.receive_message(channel, thread, message, mode)
 
 
 if __name__ == "__main__":
