@@ -1,4 +1,6 @@
 
+import re
+
 from client_interface import ClientInterface, OpenaiInterface
 
 class SlackBot():
@@ -16,10 +18,16 @@ class SlackBot():
             "history": self.prompt_history
         }
         self.default_mode = "prompt"
-        self.save_users = False
+        self.default_save_users = False
 
         self.history = {}
-        self.save_history = True
+        self.default_save_history = True
+
+        self.admin_commands = {
+            "help" : self.admin_help,
+            "history_channel_enabled" : self.admin_enable_history_channel,
+            "history_thread_enabled" : self.admin_enable_history_thread,
+        }
 
 
     def receive_message(self, channel, thread, message, mode=None):
@@ -39,28 +47,30 @@ class SlackBot():
     def ping(self, channel, thread, *args):
         self.client.send_message(channel, thread, "I'm here! :robot_face:")
 
-    def admin(self, channel, thread, *args):
-        pass
-
     def help(self, channel, thread, *args):
         message = "The help command provides you with a list of available commands and their functions. Commands: \n"\
                     + "ping: I'm here! :robot_face: \n"\
-                    + "help: This message \n"\
-                    + "admin: Admin commands \n"\
-                    + "prompt: Create a prompt for ChatGPT \n"\
-                    + "dalle2: Create a prompt for DALLE2 [NOT READY] \n"\
-                    + "history: View history of conversations"
+                    + "help: This message. \n"\
+                    + "admin: Admin commands. Type /admin help for more details. \n"\
+                    + "prompt: Create a prompt for ChatGPT. \n"\
+                    + "dalle2: Create a prompt for DALLE2 [NOT READY]. \n"\
+                    + "history: View history of conversations."
         
         self.client.send_message(channel, thread, message)
 
-    def prompt_chat_gpt(self, channel, thread, prompt):
-        if self.save_history:
-            self.add_to_history(channel, thread, prompt)
-            prompt = "".join(self.get_history(channel, thread))
-            
-        reply = self.openai_client.prompt_chat_gpt(prompt)
 
-        if self.save_history:
+    def prompt_chat_gpt(self, channel, thread, prompt):
+        if (channel not in self.history and self.default_save_history) \
+            or (channel in self.history and \
+                ((thread not in self.history[channel]["threads"] and self.history[channel]["history_enabled"]) 
+                 or (thread in self.history[channel]["threads"] and self.history[channel]["threads"][thread]["history_enabled"]))):
+            self.add_to_history(channel, thread, prompt)
+            prompt = "\n".join(self.get_history(channel, thread))
+
+        reply = self.openai_client.prompt_chat_gpt(prompt)
+        reply = re.sub(r"^\n+", "", reply)
+
+        if self.history[channel]["threads"][thread]["history_enabled"]:
             self.add_to_history(channel, thread, reply)
 
         self.client.send_message(channel, thread, reply)
@@ -75,13 +85,72 @@ class SlackBot():
     def get_history(self, channel, thread):
         if channel not in self.history:
             return []
-        if thread not in self.history[channel]:
+        if thread not in self.history[channel]["threads"]:
             return []
-        return self.history[channel][thread]
+        return self.history[channel]["threads"][thread]["history"]
+    
+    def init_history(self, channel, thread):
+        if channel not in self.history:
+            self.history[channel] = {
+                "threads" : {},
+                "history_enabled" : self.default_save_history,
+            }
+        if thread not in self.history[channel]["threads"]:
+            self.history[channel]["threads"][thread] = {
+                "history" : [],
+                "history_enabled" : self.history[channel]["history_enabled"],
+            }
     
     def add_to_history(self, channel, thread, message):
-        if channel not in self.history:
-            self.history[channel] = {}
-        if thread not in self.history[channel]:
-            self.history[channel][thread] = []
-        self.history[channel][thread].append(message)
+        self.init_history(channel, thread)
+        self.history[channel]["threads"][thread]["history"].append(message)
+
+    
+    def admin(self, channel, thread, prompt):
+        prompt = re.sub(r"^\s*", "", prompt)
+        command, *params = re.split(r"\s+", prompt)
+
+        if command in self.admin_commands:
+            self.admin_commands[command](channel, thread, *params)
+        else:
+            self.admin_help(channel, thread, *params)
+
+    def admin_help(self, channel, thread, *args):
+        message = "The admin help command provides you with a list of available admin commands and their functions. Commands: \n"\
+                + "help: This message. \n"\
+                + "history_channel_enabled: Enable or disable history for the current channel. \n"\
+                + "history_thread_enabled: Enable or disable history for the current thread."
+        
+        self.client.send_message(channel, thread, message)
+
+    def admin_enable_history_channel(self, channel, thread, value=None, *args):
+        self.init_history(channel, thread)
+
+        if value is None:
+            self.client.send_message(channel, thread, "History is currently " + ("enabled" if self.history[channel]["history_enabled"] else "disabled") + " for this channel.")
+        else:
+            if value.lower() in ["true", "yes", "on", "1"]:
+                self.history[channel]["history_enabled"] = True
+                self.client.send_message(channel, thread, "History is now enabled for this channel.")
+            elif value.lower() in ["false", "no", "off", "0"]:
+                self.history[channel]["history_enabled"] = False
+                self.client.send_message(channel, thread, "History is now disabled for this channel.")
+            else:
+                self.client.send_message(channel, thread, "Invalid value. Please use true, yes, on, 1, false, no, off, 0. Or do not provide a value to see the current status.")
+
+    def admin_enable_history_thread(self, channel, thread, value=None, *args):
+        self.init_history(channel, thread)
+        
+        if value is None:
+            self.client.send_message(channel, thread, "History is currently " + ("enabled" if self.history[channel]["threads"][thread]["history_enabled"] else "disabled") + " for this thread.")
+        else:
+            if value.lower() in ["true", "yes", "on", "1"]:
+                self.history[channel]["threads"][thread]["history_enabled"] = True
+                self.client.send_message(channel, thread, "History is now enabled for this thread.")
+            elif value.lower() in ["false", "no", "off", "0"]:
+                self.history[channel]["threads"][thread]["history_enabled"] = False
+                self.client.send_message(channel, thread, "History is now disabled for this thread.")
+            else:
+                self.client.send_message(channel, thread, "Invalid value. Please use true, yes, on, 1, false, no, off, 0. Or do not provide a value to see the current status.")
+
+

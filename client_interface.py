@@ -22,6 +22,7 @@ class OpenaiInterface():
         openai.api_key = self.openai_api_key
 
     def prompt_chat_gpt(self, prompt):
+        # print("prompt: {} ({} characters)".format(prompt, len(prompt)))
         response_text = openai.Completion.create(
             engine="text-davinci-003",
             prompt=prompt,
@@ -30,5 +31,5 @@ class OpenaiInterface():
             stop=None,
             temperature=0.5)
         response_text = response_text.choices[0].text
-        print("reply: ", response_text)
+        # print("reply: ", response_text)
         return response_text
