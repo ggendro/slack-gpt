@@ -23,6 +23,7 @@ Resources:
       Policies:
         - LambdaInvokePolicy:
             FunctionName: SlackGPTBotResponse
+      Tracing: !Ref Tracing
 Parameters:
   LogLevel:
     Type: String
@@ -34,3 +35,10 @@ Parameters:
       - WARNING
       - ERROR
       - CRITICAL
+  Tracing:
+    Type: String
+    Default: Active
+    Description: Tracing mode
+    AllowedValues:
+      - Active
+      - PassThrough
