@@ -14,6 +14,7 @@ class SlackBot():
             "help": self.help,
             "admin": self.admin,
             "prompt": self.prompt_chat_gpt,
+            "topK": self.top_k,
             "dalle2": self.prompt_dalle2,
             "history": self.prompt_history
         }
@@ -53,6 +54,7 @@ class SlackBot():
                     + "help: This message. \n"\
                     + "admin: Admin commands. Type /admin help for more details. \n"\
                     + "prompt: Create a prompt for ChatGPT. \n"\
+                    + "topK: Display the top-K replies of ChatGPT for the last prompt. \n"\
                     + "dalle2: Create a prompt for DALLE2 [NOT READY]. \n"\
                     + "history: View history of conversations."
         
@@ -74,6 +76,49 @@ class SlackBot():
             self.add_to_history(channel, thread, reply)
 
         self.client.send_message(channel, thread, reply)
+
+    def top_k(self, channel, thread, k=5, *args):
+        if type(k) is not int:
+            try:
+                k = int(k)
+            except ValueError:
+                self.client.send_message(channel, thread, "Please enter a valid integer for k.")
+                return
+        
+        if k < 1 or k > 10:
+            self.client.send_message(channel, thread, "Please enter a valid integer for k (1-10).")
+            return
+
+        if  (channel not in self.history or thread not in self.history[channel]["threads"] or len(self.history[channel]["threads"][thread]["history"]) < 2):
+            self.client.send_message(channel, thread, "No history found for this thread.")
+            return
+        
+        if (not self.history[channel]["threads"][thread]["history_enabled"]):
+            self.client.send_message(channel, thread, "History is not enabled for this thread.")
+            return
+        
+        prompt = "\n".join(self.get_history(channel, thread)[:-1])
+        replies = self.openai_client.prompt_chat_gpt_top_k(prompt, top_k=k)
+        replies = [re.sub(r"^\n+", "", reply) for reply in replies]
+        replies_text = "\n".join([f"{i+1}. {reply}" for i, reply in enumerate(replies)])
+
+        self.client.send_message(channel, thread, f"Top-{k} answers from ChatGPT for the last prompt:\n{replies_text}", attachments= [
+        {
+            "text": "Select one answer to replace the previous reply. Please, do not prompt another query in the meantime.",
+            "callback_id": "top_k_callback",
+            "attachment_type": "default",
+            "actions": [{
+                    "name": "top_k",
+                    "text": f"{i+1}",
+                    "type": "button",
+                    "value": reply
+                } for i, reply in enumerate(replies)]
+        }
+    ])
+    
+    def top_k_callback(self, channel, thread, message):
+        self.get_history(channel, thread)[-1] = message
+        self.client.send_message(channel, thread, message)
 
     def prompt_dalle2(self, channel, thread, prompt):
         pass
@@ -140,7 +185,7 @@ class SlackBot():
 
     def admin_enable_history_thread(self, channel, thread, value=None, *args):
         self.init_history(channel, thread)
-        
+
         if value is None:
             self.client.send_message(channel, thread, "History is currently " + ("enabled" if self.history[channel]["threads"][thread]["history_enabled"] else "disabled") + " for this thread.")
         else:

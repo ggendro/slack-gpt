@@ -44,6 +44,15 @@ def handle_message_events(body, logger):
     
     bot.receive_message(channel, thread, message, mode)
 
+@app.action("top_k_callback")
+def handle_top_k_callback(ack, body, logger):
+    ack()
+    channel = body["channel"]["id"]
+    thread = body["original_message"]["thread_ts"]
+    message = body["actions"][0]["value"]
+
+    bot.top_k_callback(channel, thread, message)
+
 
 if __name__ == "__main__":
     SocketModeHandler(app, SLACK_APP_TOKEN).start()
