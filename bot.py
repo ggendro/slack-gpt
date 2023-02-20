@@ -55,7 +55,7 @@ class SlackBot():
                     + "admin: Admin commands. Type /admin help for more details. \n"\
                     + "prompt: Create a prompt for ChatGPT. \n"\
                     + "topK: Display the top-K replies of ChatGPT for the last prompt. \n"\
-                    + "dalle2: Create a prompt for DALLE2 [NOT READY]. \n"\
+                    + "dalle2: Create a prompt for DALLE2. \n"\
                     + "history: View history of conversations."
         
         self.client.send_message(channel, thread, message)
@@ -121,7 +121,8 @@ class SlackBot():
         self.client.send_message(channel, thread, message)
 
     def prompt_dalle2(self, channel, thread, prompt):
-        pass
+        image_url = self.openai_client.prompt_dalle2(prompt)
+        self.client.send_image(channel, thread, image_url)
 
 
     def prompt_history(self, channel, thread, *args):
