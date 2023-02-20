@@ -10,6 +10,9 @@ class ClientInterface():
     def __init__(self, slack_token):
         self.client = WebClient(slack_token)
 
+    def get_id(self):
+        return self.client.auth_test()["user_id"]
+
     def send_message(self, channel, thread, text, attachments=None):
         response = self.client.chat_postMessage(channel=channel, 
                                        thread_ts=thread,
@@ -64,6 +67,5 @@ class OpenaiInterface():
             n=1,
             size="256x256"
         )
-        print(response)
         image_url = response['data'][0]['url']
         return image_url

@@ -36,13 +36,14 @@ regex = re.compile(r"^\s*(?:<@(.*?)>\s*\/(\w+)|\/(\w+)\s*<@(.*?)>|<@(.*?)>|\/(\w
 def handle_message_events(body, logger):
     channel = body["event"]["channel"]
     thread = body["event"]["ts"] if "thread_ts" not in body["event"] else body["event"]["thread_ts"]
+    user = body["event"]["user"]
 
     text = body["event"]["text"]
     pattern = re.findall(regex, text)[0]
     mode = pattern[1] if len(pattern[1]) > 0 else pattern[2] if len(pattern[2]) > 0 else pattern[5] if len(pattern[5]) > 0 else None
     message = re.sub(regex, "", text)
     
-    bot.receive_message(channel, thread, message, mode)
+    bot.receive_message(channel, thread, message, user, mode)
 
 @app.action("top_k_callback")
 def handle_top_k_callback(ack, body, logger):
