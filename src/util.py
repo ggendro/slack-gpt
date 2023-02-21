@@ -1,3 +1,5 @@
+from typing import Any
+
 import openai
 from aws_lambda_powertools.logging import Logger
 
@@ -8,20 +10,39 @@ openai.api_key = OPENAI_API_KEY
 logger = Logger(SERVICE_NAME, child=True)
 
 
+def error_view(e: BaseException) -> dict[str, Any]:
+    return {
+        "type": "modal",
+        "title": {"type": "plain_text", "text": "Edit message"},
+        "callback_id": "error_modal",
+        "blocks": [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "An Error occurred"},
+            },
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"```{e}```"}},
+        ],
+    }
+
+
 def completion(prompt: str, model: str, temperature: float, user: str) -> str:
-    response = (
-        openai.Completion.create(
-            model=model,
-            prompt=prompt,
-            max_tokens=1024,
-            n=1,
-            stop=None,
-            temperature=temperature,
-            user=f"sail-gpt-bot-{user}",
+    try:
+        response = (
+            openai.Completion.create(
+                model=model,
+                prompt=prompt,
+                max_tokens=1024,
+                n=1,
+                stop=None,
+                temperature=temperature,
+                user=f"sail-gpt-bot-{user}",
+            )
+            .choices[0]
+            .text
         )
-        .choices[0]
-        .text
-    )
+    except openai.OpenAIError as e:
+        logger.error("OpenAI Error: %s", e)
+        raise RuntimeError(f"OpenAI Error: HTTP {e.code}: {e.user_message}") from e
     if len(response) == 0:
         logger.warning("Empty GPT response.")
         response = "<|endoftext|>"
@@ -32,9 +53,17 @@ def completion(prompt: str, model: str, temperature: float, user: str) -> str:
 def edit(
     prompt: str, model: str, instruction: str, temperature: float, n: int
 ) -> list[str]:
-    choices = openai.Edit.create(
-        model=model, input=prompt, instruction=instruction, n=n, temperature=temperature
-    ).choices
+    try:
+        choices = openai.Edit.create(
+            model=model,
+            input=prompt,
+            instruction=instruction,
+            n=n,
+            temperature=temperature,
+        ).choices
+    except openai.OpenAIError as e:
+        logger.error("OpenAI Error: %s", e)
+        raise RuntimeError(f"OpenAI Error: HTTP {e.code}: {e.user_message}") from e
     choices = [choice.text for choice in choices]
     logger.info("GPT Response: %s", choices)
     return choices

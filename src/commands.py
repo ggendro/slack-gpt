@@ -5,10 +5,10 @@ from aws_lambda_powertools.logging import Logger
 from slack_bolt import App, Respond, Say
 
 from constants import (
+    COMPLETION_MODELS,
     DEFAULT_MODEL,
     DEFAULT_TEMPERATURE,
     SERVICE_NAME,
-    COMPLETION_MODELS,
 )
 from util import completion
 

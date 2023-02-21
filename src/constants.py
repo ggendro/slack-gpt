@@ -1,6 +1,5 @@
 import os
 
-
 COMPLETION_MODELS = [
     "text-davinci-003",
     "text-davinci-002",

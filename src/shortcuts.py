@@ -10,22 +10,19 @@ from constants import (
     DEFAULT_TEMPERATURE,
     EDIT_MODELS,
 )
-from util import completion, edit
+from util import completion, edit, error_view
 
 
 def respond_message(shortcut: dict[str, Any], client: WebClient):
     channel_id = shortcut["channel"]["id"]
-    if "thread_ts" in shortcut["message"]:
-        thread_ts = shortcut["message"]["thread_ts"]
-    else:
-        thread_ts = shortcut["message"]["ts"]
+    ts = shortcut["message"]["ts"]
     client.views_open(
         trigger_id=shortcut["trigger_id"],
         view={
             "type": "modal",
             "title": {"type": "plain_text", "text": "Respond to message"},
             "callback_id": "respond_message_view",
-            "private_metadata": channel_id + "," + thread_ts,
+            "private_metadata": channel_id + "," + ts,
             "blocks": [
                 {
                     "type": "context",
@@ -78,12 +75,13 @@ def respond_message_submit_lazy(
     temperature = values["temperature_input"]["temperature_input_action"]["value"]
     temperature = float(temperature)
 
-    channel_id, thread_ts = view["private_metadata"].split(",")
+    channel_id, ts = view["private_metadata"].split(",")
 
-    res = client.conversations_history(
-        channel=channel_id, inclusive=True, oldest=thread_ts, limit=1
+    res = client.conversations_replies(
+        channel=channel_id, ts=ts, inclusive=True, oldest=ts, limit=1
     )
     prompt = res["messages"][0]["text"]
+    thread_ts = res["messages"][0].get("thread_ts", ts)
 
     response_text = completion(prompt, model, temperature, body["user"]["id"])
     say(
@@ -97,10 +95,7 @@ def respond_message_submit_lazy(
 
 def edit_message(shortcut: dict[str, Any], client: WebClient):
     channel_id = shortcut["channel"]["id"]
-    if "thread_ts" in shortcut["message"]:
-        thread_ts = shortcut["message"]["thread_ts"]
-    else:
-        thread_ts = shortcut["message"]["ts"]
+    ts = shortcut["message"]["ts"]
 
     client.views_open(
         trigger_id=shortcut["trigger_id"],
@@ -108,7 +103,7 @@ def edit_message(shortcut: dict[str, Any], client: WebClient):
             "type": "modal",
             "title": {"type": "plain_text", "text": "Edit message"},
             "callback_id": "edit_message_view",
-            "private_metadata": channel_id + "," + thread_ts,
+            "private_metadata": channel_id + "," + ts,
             "blocks": [
                 {
                     "type": "context",
@@ -203,7 +198,7 @@ def edit_message_submit_ack(ack: Ack):
 
 def edit_message_submit_lazy(view: dict[str, Any], client: WebClient):
     values = view["state"]["values"]
-    channel_id, thread_ts = view["private_metadata"].split(",")
+    channel_id, ts = view["private_metadata"].split(",")
 
     model = values["model_select"]["model_select_action"]["selected_option"]["value"]
     temperature = values["temperature_input"]["temperature_input_action"]["value"]
@@ -211,12 +206,17 @@ def edit_message_submit_lazy(view: dict[str, Any], client: WebClient):
     instructions = values["instruct_input"]["instruct_input_action"]["value"]
     num_edits = int(values["num_edits_input"]["num_edits_input_action"]["value"])
 
-    res = client.conversations_history(
-        channel=channel_id, inclusive=True, oldest=thread_ts, limit=1
+    res = client.conversations_replies(
+        channel=channel_id, ts=ts, inclusive=True, oldest=ts, limit=1
     )
     prompt = res["messages"][0]["text"]
+    thread_ts = res["messages"][0].get("thread_ts", ts)
 
-    choices = edit(prompt, model, instructions, temperature, num_edits)
+    try:
+        choices = edit(prompt, model, instructions, temperature, num_edits)
+    except RuntimeError as e:
+        client.views_update(view_id=view["id"], view=error_view(e))
+        return
 
     blocks = []
     for i, choice in enumerate(choices):
