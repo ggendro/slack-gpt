@@ -1,6 +1,8 @@
 
 import argparse
 import re
+import atexit
+
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_bolt import App
 
@@ -27,6 +29,7 @@ openai_client = OpenaiInterface(OPENAI_API_KEY)
 
 # Bot class
 bot = SlackBot(client, openai_client)
+atexit.register(bot.save_history)
 
 # create regex to catch optional mention and slash command, in any order
 regex = re.compile(r"^\s*(?:<@(.*?)>\s*\/(\w+)|\/(\w+)\s*<@(.*?)>|<@(.*?)>|\/(\w+))")

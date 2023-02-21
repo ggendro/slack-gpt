@@ -1,5 +1,6 @@
 
 import re
+import json
 
 from client_interface import ClientInterface, OpenaiInterface
 
@@ -24,6 +25,8 @@ class SlackBot():
 
         self.history = {}
         self.default_save_history = True
+        self.history_load_path = "history.json"
+        self.load_history()
 
         self.admin_commands = {
             "help" : self.admin_help,
@@ -180,6 +183,22 @@ class SlackBot():
     def add_to_history(self, channel, thread, message):
         self.init_history(channel, thread)
         self.history[channel]["threads"][thread]["history"].append(message)
+    
+    def save_history(self):
+        try:
+            print("Saving history...")
+            with open(self.history_load_path, "w") as f:
+                json.dump(self.history, f)
+        except Exception as e:
+            print("Failed saving history:", e)
+        
+    def load_history(self):
+        try: 
+            print("Loading history...")
+            with open(self.history_load_path, "r") as f:
+                self.history = json.load(f)
+        except Exception as e:
+            print("Failed loading history:", e)
 
     
     def admin(self, channel, thread, prompt, user):
