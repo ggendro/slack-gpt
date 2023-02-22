@@ -6,20 +6,18 @@ from slack_bolt import App, Say
 from slack_sdk import WebClient
 
 from constants import BOT_USER_ID, DEFAULT_MODEL, DEFAULT_TEMPERATURE, SERVICE_NAME
-from util import completion
+from util import completion, log_post_error
 
 logger = Logger(SERVICE_NAME, child=True)
 
 
 # This gets activated when the bot is tagged in a message
 def handle_mention(event: dict[str, Any], say: Say, client: WebClient):
-    logger.info("request: %s", event["text"])
-
     match = re.match(r"^<@[a-zA-Z0-9]+>(.*)$", event["text"])
     if not match:
         client.chat_postEphemeral(
-            text="You must tag me at the beginning of your message.",
-            thread_ts=event["event_ts"],
+            text="You must tag me at the beginning of your message if you want me to respond.",  # noqa: E501
+            thread_ts=event["thread_ts"],
             user=event["user"],
             channel=event["channel"],
         )
@@ -28,19 +26,17 @@ def handle_mention(event: dict[str, Any], say: Say, client: WebClient):
 
     client.chat_postEphemeral(
         text="Processing...",
-        thread_ts=event["event_ts"],
+        thread_ts=event["thread_ts"],
         user=event["user"],
         channel=event["channel"],
     )
-    response_text = completion(
-        prompt, DEFAULT_MODEL, DEFAULT_TEMPERATURE, event["user"]
-    )
-    say(
-        f"Here you go: \n{response_text}",
-        thread_ts=event["event_ts"],
-        parse="none",
-        mrkdwn=False,
-    )
+
+    try:
+        response = completion(prompt, DEFAULT_MODEL, DEFAULT_TEMPERATURE, event["user"])
+    except RuntimeError as e:
+        log_post_error(e, event["user"], event["channel"], event["thread_ts"], client)
+        return
+    say(response, thread_ts=event["thread_ts"], parse="none", mrkdwn=False)
 
 
 # This gets activated on messages in subscribed channels
@@ -91,7 +87,11 @@ def handle_message(event: dict[str, Any], say: Say, client: WebClient):
 
     logger.info("thread prompt: %s", prompt)
 
-    response_text = completion(prompt, model, temperature, event["user"])
+    try:
+        response_text = completion(prompt, model, temperature, event["user"])
+    except RuntimeError as e:
+        log_post_error(e, event["user"], event["channel"], event["thread_ts"], client)
+        return
     logger.info("reply: %s", response_text)
     say(response_text, thread_ts=event["thread_ts"], parse="none", mrkdwn=False)
 

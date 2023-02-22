@@ -2,6 +2,7 @@ from typing import Any
 
 import openai
 from aws_lambda_powertools.logging import Logger
+from slack_sdk import WebClient
 
 from constants import SERVICE_NAME
 from keys import OPENAI_API_KEY
@@ -23,6 +24,18 @@ def error_view(e: BaseException) -> dict[str, Any]:
             {"type": "section", "text": {"type": "mrkdwn", "text": f"```{e}```"}},
         ],
     }
+
+
+def log_post_error(
+    e: BaseException, user: str, channel: str, thread: str, client: WebClient
+):
+    logger.error("Error: %s", e)
+    client.chat_postEphemeral(
+        text=f"An error occurred while processing your message:\n```{e}```",
+        channel=channel,
+        user=user,
+        thread_ts=thread,
+    )
 
 
 def completion(prompt: str, model: str, temperature: float, user: str) -> str:

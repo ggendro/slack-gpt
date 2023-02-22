@@ -10,7 +10,7 @@ from constants import (
     DEFAULT_TEMPERATURE,
     EDIT_MODELS,
 )
-from util import completion, edit, error_view
+from util import completion, edit, error_view, log_post_error
 
 
 def respond_message(shortcut: dict[str, Any], client: WebClient):
@@ -83,7 +83,11 @@ def respond_message_submit_lazy(
     prompt = res["messages"][0]["text"]
     thread_ts = res["messages"][0].get("thread_ts", ts)
 
-    response_text = completion(prompt, model, temperature, body["user"]["id"])
+    try:
+        response_text = completion(prompt, model, temperature, body["user"]["id"])
+    except RuntimeError as e:
+        log_post_error(e, body["user"]["id"], channel_id, thread_ts, client)
+        return
     say(
         response_text,
         thread_ts=thread_ts,

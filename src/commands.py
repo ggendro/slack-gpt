@@ -3,6 +3,7 @@ from typing import Any
 
 from aws_lambda_powertools.logging import Logger
 from slack_bolt import App, Respond, Say
+from slack_sdk import WebClient
 
 from constants import (
     COMPLETION_MODELS,
@@ -10,21 +11,23 @@ from constants import (
     DEFAULT_TEMPERATURE,
     SERVICE_NAME,
 )
-from util import completion
+from util import completion, log_post_error
 
 logger = Logger(SERVICE_NAME, child=True)
 
 
 # This gets activated on the use of the /gpt command
-def handle_gpt_command(command: dict[str, Any], say: Say, respond: Respond):
+def handle_gpt_command(
+    command: dict[str, Any], say: Say, respond: Respond, client: WebClient
+):
     logger.info("request: %s", command["text"])
 
     if command["text"].lower() == "help":
         respond(
-            "Usage: /gpt [model] [temperature] prompt\n\n"
-            f"model: one of {', '.join(COMPLETION_MODELS)} (default: {DEFAULT_MODEL})\n"
-            "temperature: a number between 0 and 2 (default: 0.5)\n"
-            "prompt: the text to use as a prompt for the model"
+            "Usage: ```/gpt [model] [temperature] prompt```\n\n"
+            f"`model`: one of {', '.join(COMPLETION_MODELS)} (default: {DEFAULT_MODEL})\n"
+            "`temperature`: a number between 0 and 2 (default: 0.5)\n"
+            "`prompt`: the text to use as a prompt for the model"
         )
         return
 
@@ -47,7 +50,11 @@ def handle_gpt_command(command: dict[str, Any], say: Say, respond: Respond):
         return
 
     respond("Processing...")
-    response_text = completion(prompt, model, temperature, command["user_id"])
+    try:
+        response_text = completion(prompt, model, temperature, command["user_id"])
+    except RuntimeError as e:
+        respond(f"An error occurred while processing your request:\n```{e}```")
+        return
     res = say(
         f"<model={model},temperature={temperature:.3f}>\n{prompt}",
         parse="none",
