@@ -4,3 +4,4 @@ openai_api_key.txt
 slack_app_token.txt
 slack_bot_token.txt
 .aws-sam/
+__pycache__/
