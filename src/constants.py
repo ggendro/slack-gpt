@@ -19,4 +19,4 @@ DEFAULT_MODEL = "text-davinci-003"
 DEFAULT_EDIT_MODEL = "text-davinci-edit-001"
 DEFAULT_TEMPERATURE = 0.5
 SERVICE_NAME = "slack-gpt-bot"
-BOT_USER_ID = os.environ["BOT_USER_ID"]
+BOT_USER_ID = None  # Set programmatically in app.py

@@ -4,6 +4,7 @@ from aws_lambda_powertools.logging import Logger, correlation_paths
 from slack_bolt import App
 from slack_bolt.adapter.aws_lambda import SlackRequestHandler
 
+import constants
 from commands import init_commands
 from constants import SERVICE_NAME
 from events import init_events
@@ -18,6 +19,7 @@ app = App(
     logger=logger,
     process_before_response=True,
 )
+constants.BOT_USER_ID = app.client.auth_test()["user_id"]
 
 init_commands(app)
 init_shortcuts(app)
