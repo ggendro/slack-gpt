@@ -39,7 +39,12 @@ class OpenaiInterface():
         self.openai_api_key = openai_api_key
         openai.api_key = self.openai_api_key
 
-    def prompt_chat_gpt(self, prompt):
+    def postprocess(self, text):
+        if len(text) == 0:
+            return "<|endoftext|>"
+        else:
+            return text
+
         response_text = openai.Completion.create(
             engine="text-davinci-003",
             prompt=prompt,
@@ -48,7 +53,7 @@ class OpenaiInterface():
             stop=None,
             temperature=0.5)
         response_text = response_text.choices[0].text
-        return response_text
+        return self.postprocess(response_text)
 
     def prompt_chat_gpt_top_k(self, prompt, top_k=1):
         response_choices = openai.Completion.create(
@@ -59,7 +64,7 @@ class OpenaiInterface():
             stop=None,
             temperature=0.5).choices
         
-        return [choice.text for choice in response_choices]
+        return [self.postprocess(choice.text) for choice in response_choices]
     
     def prompt_dalle2(self, prompt):
         response = openai.Image.create(
