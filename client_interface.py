@@ -45,24 +45,25 @@ class OpenaiInterface():
         else:
             return text
 
+    def prompt_chat_gpt(self, prompt, engine="text-davinci-003", temperature=0.5):
         response_text = openai.Completion.create(
-            engine="text-davinci-003",
+            engine=engine,
             prompt=prompt,
             max_tokens=1024,
             n=1,
             stop=None,
-            temperature=0.5)
+            temperature=temperature)
         response_text = response_text.choices[0].text
         return self.postprocess(response_text)
 
-    def prompt_chat_gpt_top_k(self, prompt, top_k=1):
+    def prompt_chat_gpt_top_k(self, prompt, top_k=1, engine="text-davinci-003", temperature=0.5):
         response_choices = openai.Completion.create(
-            engine="text-davinci-003",
+            engine=engine,
             prompt=prompt,
             max_tokens=1024,
             n=top_k,
             stop=None,
-            temperature=0.5).choices
+            temperature=temperature).choices
         
         return [self.postprocess(choice.text) for choice in response_choices]
     

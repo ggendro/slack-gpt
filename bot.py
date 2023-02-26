@@ -23,6 +23,25 @@ class SlackBot():
         self.default_mode = "prompt"
         self.default_save_users = False
 
+        self.default_engine = "text-davinci-003"
+        self.valid_engines = [
+            "text-davinci-003",
+            "text-davinci-002",
+            "text-davinci-001",
+            "text-curie-001",
+            "text-babbage-001",
+            "text-ada-001",
+            "davinci",
+            "curie",
+            "babbage",
+            "ada",
+            "code-davinci-002",
+            "code-cushman-001",
+        ]
+        self.default_temperature = 0.5
+        self.min_temperature = 0.0
+        self.max_temperature = 1.0
+
         self.history = {}
         self.default_save_history = True
         self.history_load_path = "history.json"
@@ -34,6 +53,10 @@ class SlackBot():
             "history_thread_enabled" : self.admin_enable_history_thread,
             "save_usernames_channel_enabled" : self.admin_enable_save_usernames_channel,
             "save_usernames_thread_enabled" : self.admin_enable_save_usernames_thread,
+            "engine_channel" : self.admin_set_engine_channel,
+            "engine_thread" : self.admin_set_engine_thread,
+            "temperature_channel" : self.admin_set_temperature_channel,
+            "temperature_thread" : self.admin_set_temperature_thread,
         }
 
 
@@ -88,7 +111,7 @@ class SlackBot():
         if users_enabled:
             prompt = f"{prompt}\n{self.tag_user(self.id)}: "
 
-        reply = self.openai_client.prompt_chat_gpt(prompt)
+        reply = self.openai_client.prompt_chat_gpt(prompt, engine=self.history[channel]["threads"][thread]["engine"], temperature=self.history[channel]["threads"][thread]["temperature"])
         reply = re.sub(r"^\n+", "", reply)
         
         self.client.send_message(channel, thread, reply)
@@ -124,7 +147,7 @@ class SlackBot():
         if self.history[channel]["threads"][thread]["save_users_enabled"]:
             prompt = f"{prompt}\n{self.tag_user(self.id)}: "
 
-        replies = self.openai_client.prompt_chat_gpt_top_k(prompt, top_k=k)
+        replies = self.openai_client.prompt_chat_gpt_top_k(prompt, top_k=k, engine=self.history[channel]["threads"][thread]["engine"], temperature=self.history[channel]["threads"][thread]["temperature"])
         replies = [re.sub(r"^\n+", "", reply) for reply in replies]
         replies_text = "\n".join([f"{i+1}. {reply}" for i, reply in enumerate(replies)])
 
@@ -172,12 +195,16 @@ class SlackBot():
                 "threads" : {},
                 "history_enabled" : self.default_save_history,
                 "save_users_enabled" : self.default_save_users,
+                "engine" : self.default_engine,
+                "temperature" : self.default_temperature,
             }
         if thread not in self.history[channel]["threads"]:
             self.history[channel]["threads"][thread] = {
                 "history" : [],
                 "history_enabled" : self.history[channel]["history_enabled"],
-                "save_users_enabled" : self.default_save_users,
+                "save_users_enabled" : self.history[channel]["save_users_enabled"],
+                "engine" : self.history[channel]["engine"],
+                "temperature" : self.history[channel]["temperature"],
             }
     
     def add_to_history(self, channel, thread, message):
@@ -216,7 +243,11 @@ class SlackBot():
                 + "history_channel_enabled: Enable or disable history for the current channel. \n"\
                 + "history_thread_enabled: Enable or disable history for the current thread. \n"\
                 + "save_usernames_channel_enabled: Enable or disable the save of usernames for the current channel. \n"\
-                + "save_usernames_thread_enabled: Enable or disable the save of usernames for the current thread."
+                + "save_usernames_thread_enabled: Enable or disable the save of usernames for the current thread. \n"\
+                + "engine_channel: Set the engine for the current channel. \n"\
+                + "engine_thread: Set the engine for the current thread. \n"\
+                + "temperature_channel: Set the temperature for the current channel. \n"\
+                + "temperature_thread: Set the temperature for the current thread."
         
         self.client.send_message(channel, thread, message)
     
@@ -250,6 +281,41 @@ class SlackBot():
             else:
                 self.client.send_message(channel, thread, "Invalid value. Please use true, yes, on, 1, false, no, off, 0. Or do not provide a value to see the current status.")
 
+    def admin_set_option_channel(self, channel, thread, option, option_name, value, set_valid_values=None, min_value=None, max_value=None):
+        self.init_history(channel, thread)
+
+        if value is None:
+            self.client.send_message(channel, thread, f"{option_name} is currently " + str(self.history[channel][option]) + f" for this channel.")
+        else:
+            try:
+                self.history[channel][option] = value
+                self.client.send_message(channel, thread, f"{option_name} is now {value} for this channel.")
+            except:
+                valid_values_text = ""
+                if set_valid_values is not None:
+                    valid_values_text = " The set of valid values is:\n " + "\n".join(set_valid_values) + "."
+                elif min_value is not None and max_value is not None:
+                    valid_values_text = f" The valid range is from {min_value} to {max_value}."                   
+            
+                self.client.send_message(channel, thread, f"Invalid value. Please use a valid value for the option. Or do not provide a value to see the current status.{valid_values_text}")
+    
+    def admin_set_option_thread(self, channel, thread, option, option_name, value, valid_values=None, min_value=None, max_value=None):
+        self.init_history(channel, thread)
+
+        if value is None:
+            self.client.send_message(channel, thread, f"{option_name} is currently " + str(self.history[channel]["threads"][thread][option]) + f" for this thread.")
+        else:
+            try:
+                self.history[channel]["threads"][thread][option] = value
+                self.client.send_message(channel, thread, f"{option_name} is now {value} for this thread.")
+            except:
+                valid_values_text = ""
+                if valid_values is not None:
+                    valid_values_text = " The set of valid values is:\n " + "\n".join(valid_values) + "."
+                elif min_value is not None and max_value is not None:
+                    valid_values_text = f" The valid range is from {min_value} to {max_value}."
+                self.client.send_message(channel, thread, f"Invalid value. Please use a valid value for the option. Or do not provide a value to see the current status.{valid_values_text}")
+
     def admin_enable_history_channel(self, channel, thread, value=None, *args):
         self.admin_enable_option_channel(channel, thread, "history_enabled", "History", value)
 
@@ -261,6 +327,18 @@ class SlackBot():
 
     def admin_enable_save_usernames_thread(self, channel, thread, value=None, *args):
         self.admin_enable_option_thread(channel, thread, "save_users_enabled", "Saving usernames", value)
+    
+    def admin_set_engine_channel(self, channel, thread, value=None, *args):
+        self.admin_set_option_channel(channel, thread, "engine", "Engine", value, set_valid_values=self.valid_engines)
+
+    def admin_set_engine_thread(self, channel, thread, value=None, *args):
+        self.admin_set_option_thread(channel, thread, "engine", "Engine", value, valid_values=self.valid_engines)
+
+    def admin_set_temperature_channel(self, channel, thread, value=None, *args):
+        self.admin_set_option_channel(channel, thread, "temperature", "Temperature", value, min_value=self.min_temperature, max_value=self.max_temperature)
+
+    def admin_set_temperature_thread(self, channel, thread, value=None, *args):
+        self.admin_set_option_thread(channel, thread, "temperature", "Temperature", value, min_value=self.min_temperature, max_value=self.max_temperature)
 
     
 
