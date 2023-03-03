@@ -23,6 +23,12 @@ Resources:
         - LambdaInvokePolicy:
             FunctionName: SlackGPTBotResponse
       Tracing: !Ref Tracing
+      Events:
+        PingEvent:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: rate(2 minutes)
+            Description: Ping the Slack bot every couple of minutes.
 Parameters:
   LogLevel:
     Type: String
