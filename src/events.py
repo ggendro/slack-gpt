@@ -5,10 +5,10 @@ from aws_lambda_powertools.logging import Logger
 from slack_bolt import App, Say
 from slack_sdk import WebClient
 
-from constants import BOT_USER_ID, DEFAULT_MODEL, DEFAULT_TEMPERATURE, SERVICE_NAME
-from util import completion, log_post_error
+import constants as c
+from util import chat, completion, get_chat_params, log_post_error, normalise_text
 
-logger = Logger(SERVICE_NAME, child=True)
+logger = Logger(c.SERVICE_NAME, child=True)
 
 
 # This gets activated when the bot is tagged in a message
@@ -32,11 +32,36 @@ def handle_mention(event: dict[str, Any], say: Say, client: WebClient):
     )
 
     try:
-        response = completion(prompt, DEFAULT_MODEL, DEFAULT_TEMPERATURE, event["user"])
+        response = completion(
+            prompt, c.DEFAULT_MODEL, c.DEFAULT_TEMPERATURE, event["user"]
+        )
     except RuntimeError as e:
         log_post_error(e, event["user"], event["channel"], event["thread_ts"], client)
         return
-    say(response, thread_ts=event["thread_ts"], parse="none", mrkdwn=False)
+    say(response, thread_ts=event["thread_ts"], parse="none")
+
+
+def _find_paramters(message: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    if "blocks" not in message:
+        # Try to parse old-style message
+        text = normalise_text(message["text"])
+        param_str, orig_prompt = text.split("\n", 1)
+        params = get_chat_params(param_str)
+        return params, orig_prompt
+
+    params = {}
+    orig_prompt = ""
+    for block in message["blocks"]:
+        if block["block_id"] == "parameters":
+            param_str = normalise_text(block["elements"][0]["text"])
+            param_str = param_str.strip("`")
+            params = get_chat_params(param_str)
+        elif block["block_id"] in ["system_prompt", "orig_prompt"]:
+            if "elements" in block:  # context
+                orig_prompt = normalise_text(block["elements"][0]["text"])
+            else:  # section
+                orig_prompt = normalise_text(block["text"]["text"])
+    return params, orig_prompt
 
 
 # This gets activated on messages in subscribed channels
@@ -49,51 +74,48 @@ def handle_message(event: dict[str, Any], say: Say, client: WebClient):
         # Not a reply
         logger.info("Not a reply")
         return
-    if event["parent_user_id"] != BOT_USER_ID:
+    if event["parent_user_id"] != c.BOT_USER_ID:
         # Not a reply to ourself
-        logger.info("Not a reply to ourself")
+        logger.info("Not a reply to ourself: ", event["parent_user_id"])
         return
-    if event["user"] == BOT_USER_ID:
+    if event["user"] == c.BOT_USER_ID:
         # Don't reply to our own messages
         logger.info("Message from ourself")
         return
-    if f"@{BOT_USER_ID}" in event["text"]:
+    if f"@{c.BOT_USER_ID}" in event["text"]:
         # Don't reply to mentions
         logger.info("Message mentions ourself")
         return
 
     res = client.conversations_replies(channel=event["channel"], ts=event["thread_ts"])
     messages = res["messages"]
-    orig_msg_txt: str = messages[0]["text"]
-    orig_msg_txt = orig_msg_txt.replace("&lt;", "<").replace("&gt;", ">")
-
-    match = re.match(
-        r"^<model=([a-z0-9-]+),temperature=(\d\.?\d*)>\n(.*)$", orig_msg_txt
-    )
-    if not match:
-        # Cannot determine parameters
-        logger.warning("Cannot determine OpenAI parameters from text: %s", orig_msg_txt)
+    params, orig_prompt = _find_paramters(messages[0])
+    if not params:
+        logger.error("Cannot determine OpenAI parameters.")
         return
-    model = match.group(1)
-    temperature = float(match.group(2))
-    orig_prompt = match.group(3)
+    model = params["model"]
+    temperature = params["temperature"]
 
-    thread = [orig_prompt] + [msg["text"] for msg in messages[1:] if "text" in msg]
-    prompt = "\n".join(thread)
-
+    thread = [normalise_text(msg["text"]) for msg in messages[1:] if "text" in msg]
+    logger.info("thread: %s", thread)
+    if model in c.COMPLETION_MODELS:
+        prompt = "\n".join([orig_prompt] + thread)
+    else:  # model in CHAT_MODELS
+        prompt = orig_prompt
     if len(prompt) == 0:
-        logger.error("Empty thread prompt. Thread data: %s", messages)
+        logger.error("Empty thread.")
         return
-
-    logger.info("thread prompt: %s", prompt)
 
     try:
-        response_text = completion(prompt, model, temperature, event["user"])
+        if model in c.COMPLETION_MODELS:
+            response_text = completion(prompt, model, temperature, event["user"])
+        else:  # model in CHAT_MODELS
+            response_text = chat(thread, prompt, model, temperature, event["user"])
     except RuntimeError as e:
         log_post_error(e, event["user"], event["channel"], event["thread_ts"], client)
         return
     logger.info("reply: %s", response_text)
-    say(response_text, thread_ts=event["thread_ts"], parse="none", mrkdwn=False)
+    say(response_text, thread_ts=event["thread_ts"])
 
 
 def init_events(app: App):

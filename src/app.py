@@ -4,14 +4,13 @@ from aws_lambda_powertools.logging import Logger, correlation_paths
 from slack_bolt import App
 from slack_bolt.adapter.aws_lambda import SlackRequestHandler
 
-import constants
+import constants as c
 from commands import init_commands
-from constants import SERVICE_NAME
 from events import init_events
 from keys import BOT_OAUTH_TOKEN, SIGNING_SECRET
 from shortcuts import init_shortcuts
 
-logger = Logger(SERVICE_NAME, level=os.environ.get("LOG_LEVEL", "INFO"))
+logger = Logger(c.SERVICE_NAME, level=os.environ.get("LOG_LEVEL", "INFO"))
 app = App(
     token=BOT_OAUTH_TOKEN,
     name="slack-gpt-bot-app",
@@ -19,7 +18,8 @@ app = App(
     logger=logger,
     process_before_response=True,
 )
-constants.BOT_USER_ID = app.client.auth_test()["user_id"]
+c.BOT_USER_ID = app.client.auth_test()["user_id"]
+logger.info("Bot user ID: %s", c.BOT_USER_ID)
 
 init_commands(app)
 init_shortcuts(app)
