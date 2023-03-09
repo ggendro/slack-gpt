@@ -3,6 +3,8 @@
 
 Repository for a slack bot app connected to the [OpenAI API](https://openai.com/api/). Our method is inspired by [this blogpost](https://medium.com/@alexandre.tkint/integrate-openais-chatgpt-within-slack-a-step-by-step-approach-bea43400d311).
 
+Update (09/03/2023) :loudspeaker:: added the latest Chat Completion engine **gpt-3.5-turbo**!
+
 
 ## Installation
 

@@ -1,6 +1,8 @@
 
 import requests
 from io import BytesIO
+from typing import Union
+
 import openai
 from slack.web import WebClient
 
@@ -33,40 +35,127 @@ class ClientInterface():
         status = response["ok"]
         print("status: ", "OK" if status else "KO")
         return status
-    
+
+
 class OpenaiInterface():
     def __init__(self, openai_api_key):
         self.openai_api_key = openai_api_key
         openai.api_key = self.openai_api_key
+        self.assistant_name = ""
 
-    def postprocess(self, text):
+        self.completion_engines = {
+            "engines" : [
+                "text-davinci-003",
+                "text-davinci-002",
+                "text-davinci-001",
+                "text-curie-001",
+                "text-babbage-001",
+                "text-ada-001",
+                "davinci",
+                "curie",
+                "babbage",
+                "ada",
+                "code-davinci-002",
+                "code-cushman-001",
+            ],
+            "function": self._prompt_completion
+        }
+        self.chat_engines = {
+            "engines" : [
+                "gpt-3.5-turbo",
+                "gpt-3.5-turbo-0301"
+            ],
+            "function": self._prompt_chat
+        }
+        # self.code_engines = [
+        #     "code-davinci-002",
+        #     "code-cushman-001",
+        # ]
+
+    def get_engines(self):
+        return self.completion_engines["engines"] + self.chat_engines["engines"] # + self.code_engines
+    
+
+    def _text_preprocess(self, context, prompt):
+        str_context = [entry["message"] for entry in context]
+        
+        if type(prompt) is list and len(prompt) == 1:
+            str_prompt = [prompt[0]["message"]]
+        elif type(prompt) is list and len(prompt) == 2:
+            str_prompt = [prompt[0]["message"], prompt[1]["message"]]
+        else:
+            str_prompt = [prompt["message"]]
+
+        return "\n".join(str_context + str_prompt)
+    
+    def _text_postprocess(self, response):
+        return [resp.text for resp in response.choices]
+    
+    def _chat_preprocess(self, context, prompt):
+        messages = [{"role": ("user" if entry["user"] != self.assistant_name else "assistant"), "content": entry["message"]} for entry in context]
+        
+        if type(prompt) is list and len(prompt) == 1:
+            messages.append({"role": "user", "content": prompt[0]["message"]})
+        elif type(prompt) is list and len(prompt) == 2:
+            messages.append({"role": "user", "content": prompt[0]["message"]})
+            messages.append({"role": "assistant", "content": prompt[1]["message"]})
+        else:
+            messages.append({"role": "user", "content": prompt["message"]})
+
+        return messages
+    
+    def _chat_postprocess(self, response):
+        return [resp.message.content for resp in response.choices]
+
+    def _postprocess(self, text):
         if len(text) == 0:
             return "<|endoftext|>"
         else:
             return text
+        
 
-    def prompt_chat_gpt(self, prompt, engine="text-davinci-003", temperature=0.5):
-        response_text = openai.Completion.create(
+    def prompt_chat_gpt(self, prompt : Union[list, str], context : list = [], engine : str = "text-davinci-003", temperature : int = 0.5):
+        responses = None
+        if engine in self.chat_engines["engines"]:
+            responses = self.chat_engines["function"](prompt, context, engine, temperature)
+        else:
+            responses = self.completion_engines["function"](prompt, context, engine, temperature)
+        
+        return self._postprocess(responses[0])
+
+    def prompt_chat_gpt_top_k(self, prompt : Union[list, str], context : list = [], top_k : int = 1, engine : str = "text-davinci-003", temperature : int = 0.5):
+        responses = None
+        if engine in self.chat_engines["engines"]:
+            responses = self.chat_engines["function"](prompt, context, engine, temperature, n=top_k)
+        else:
+            responses = self.completion_engines["function"](prompt, context, engine, temperature, n=top_k)
+
+        return [self._postprocess(choice) for choice in responses]
+    
+    
+    def _prompt_completion(self, prompt, context, engine, temperature, n=1):
+        prompt = self._text_preprocess(context, prompt)
+        responses = openai.Completion.create(
             engine=engine,
             prompt=prompt,
             max_tokens=1024,
-            n=1,
+            n=n,
             stop=None,
             temperature=temperature)
-        response_text = response_text.choices[0].text
-        return self.postprocess(response_text)
-
-    def prompt_chat_gpt_top_k(self, prompt, top_k=1, engine="text-davinci-003", temperature=0.5):
-        response_choices = openai.Completion.create(
-            engine=engine,
-            prompt=prompt,
-            max_tokens=1024,
-            n=top_k,
-            stop=None,
-            temperature=temperature).choices
-        
-        return [self.postprocess(choice.text) for choice in response_choices]
+        return self._text_postprocess(responses)
     
+    def _prompt_chat(self, prompt, context, engine, temperature, n=1):
+        messages = self._chat_preprocess(context, prompt)
+        responses = openai.ChatCompletion.create(
+            model=engine,
+            messages=messages,
+            max_tokens=1024,
+            n=n,
+            stop=None,
+            temperature=temperature)
+        return self._chat_postprocess(responses)
+    
+
     def prompt_dalle2(self, prompt):
         response = openai.Image.create(
             prompt=prompt,
