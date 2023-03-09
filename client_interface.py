@@ -43,37 +43,46 @@ class OpenaiInterface():
         openai.api_key = self.openai_api_key
         self.assistant_name = ""
 
-        self.completion_engines = {
-            "engines" : [
-                "text-davinci-003",
-                "text-davinci-002",
-                "text-davinci-001",
-                "text-curie-001",
-                "text-babbage-001",
-                "text-ada-001",
-                "davinci",
-                "curie",
-                "babbage",
-                "ada",
-                "code-davinci-002",
-                "code-cushman-001",
-            ],
-            "function": self._prompt_completion
+        self.engines = {
+            "completion" : {
+                "engines" : [
+                    "text-davinci-003",
+                    "text-davinci-002",
+                    "text-davinci-001",
+                    "text-curie-001",
+                    "text-babbage-001",
+                    "text-ada-001",
+                    "davinci",
+                    "curie",
+                    "babbage",
+                    "ada",
+                ],
+                "function": self._prompt_completion
+            },
+            "chat" : {
+                "engines" : [
+                    "gpt-3.5-turbo",
+                    "gpt-3.5-turbo-0301"
+                ],
+                "function": self._prompt_chat
+            },
+            "code" : {
+                "engines" : [
+                    "code-davinci-002",
+                    "code-cushman-001",
+                ],
+                "function": self._prompt_completion
+            }
         }
-        self.chat_engines = {
-            "engines" : [
-                "gpt-3.5-turbo",
-                "gpt-3.5-turbo-0301"
-            ],
-            "function": self._prompt_chat
-        }
-        # self.code_engines = [
-        #     "code-davinci-002",
-        #     "code-cushman-001",
-        # ]
 
     def get_engines(self):
-        return self.completion_engines["engines"] + self.chat_engines["engines"] # + self.code_engines
+        return [engine for mode in self.engines.values() for engine in mode["engines"]]
+    
+    def get_engine_func(self, engine):
+        for mode in self.engines.values():
+            if engine in mode["engines"]:
+                return mode["function"]
+        return None
     
 
     def _text_preprocess(self, context, prompt):
@@ -115,21 +124,11 @@ class OpenaiInterface():
         
 
     def prompt_chat_gpt(self, prompt : Union[list, str], context : list = [], engine : str = "text-davinci-003", temperature : int = 0.5):
-        responses = None
-        if engine in self.chat_engines["engines"]:
-            responses = self.chat_engines["function"](prompt, context, engine, temperature)
-        else:
-            responses = self.completion_engines["function"](prompt, context, engine, temperature)
-        
+        responses = self.get_engine_func(engine)(prompt, context, engine, temperature)       
         return self._postprocess(responses[0])
 
     def prompt_chat_gpt_top_k(self, prompt : Union[list, str], context : list = [], top_k : int = 1, engine : str = "text-davinci-003", temperature : int = 0.5):
-        responses = None
-        if engine in self.chat_engines["engines"]:
-            responses = self.chat_engines["function"](prompt, context, engine, temperature, n=top_k)
-        else:
-            responses = self.completion_engines["function"](prompt, context, engine, temperature, n=top_k)
-
+        responses = self.get_engine_func(engine)(prompt, context, engine, temperature, n=top_k)
         return [self._postprocess(choice) for choice in responses]
     
     
