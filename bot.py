@@ -1,7 +1,9 @@
 
 from __future__ import annotations
+import os
 import re
 import json
+import time
 from typing import Optional, Union, Tuple
 
 import tiktoken
@@ -12,8 +14,9 @@ class HistoryCT():
     History class for channels and threads
     """
 
-    def __init__(self, history_save_path : str = "history.json", default_options : dict = {}):
+    def __init__(self, history_load_path : str = "history.json", history_save_path : Union[list,str] = "history.json", default_options : dict = {}):
         self.history = {}
+        self.history_load_path = history_load_path
         self.history_save_path = history_save_path
         self.default_options = default_options
     
@@ -55,19 +58,23 @@ class HistoryCT():
         self.history[channel]["threads"][thread][option_name] = option_value
 
 
-    def save_history(self, path: str = None):
+    def save_history(self, path: Union[list,str] = None):
         path = path if path is not None else self.history_save_path
-        try:
-            print("Saving history...")
-            with open(self.history_save_path, "w") as f:
-                json.dump(self.history, f, indent=4)
-        except Exception as e:
-            print("Failed saving history:", e)
+        if type(path) is not list:
+            path = [path]
+        for p in path:
+            try:
+                print(f"Saving history to {p}...")
+                os.makedirs(os.path.dirname(p), exist_ok=True)
+                with open(p, "w") as f:
+                    json.dump(self.history, f, indent=4)
+            except Exception as e:
+                print("Failed saving history:", e)
         
     def load_history(self, path: str = None):
-        path = path if path is not None else self.history_save_path
+        path = path if path is not None else self.history_load_path
         try: 
-            print("Loading history...")
+            print(f"Loading history from {path}...")
             with open(path, "r") as f:
                 self.history = json.load(f)
         except Exception as e:
@@ -189,8 +196,10 @@ class SlackBot():
         self.min_max_tokens = 64
         self.max_max_tokens = 4096
 
+        init_time = time.strftime("%m%d%Y-%H%M%S")
         self.history = HistoryCT(
-            history_save_path="history.json", 
+            history_load_path="history_saves/last_history.json",
+            history_save_path=["history_saves/last_history.json", f"history_saves/history-{init_time}.json"],
             default_options={
                 "history_enabled" : True,
                 "save_users_enabled" : False,
