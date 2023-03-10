@@ -74,6 +74,22 @@ class OpenaiInterface():
                 "function": self._prompt_completion
             }
         }
+        self.engine_sizes = {
+            "text-davinci-003" : 4097,
+            "text-davinci-002" : 4097,
+            "text-davinci-001" : 2049,
+            "text-curie-001" : 2049,
+            "text-babbage-001" : 2049,
+            "text-ada-001" : 2049,
+            "davinci" : 2049,
+            "curie" : 2049,
+            "babbage" : 2049,
+            "ada" : 2049,
+            "gpt-3.5-turbo" : 4096,
+            "gpt-3.5-turbo-0301" : 4096,
+            "code-davinci-002" : 8001,
+            "code-cushman-001" : 2048,
+        }
 
     def get_engines(self):
         return [engine for mode in self.engines.values() for engine in mode["engines"]]
@@ -84,6 +100,8 @@ class OpenaiInterface():
                 return mode["function"]
         return None
     
+    def get_engine_token_size(self, engine):
+        return self.engine_sizes[engine]
 
     def _text_preprocess(self, context, prompt):
         str_context = [entry["message"] for entry in context]
@@ -123,32 +141,32 @@ class OpenaiInterface():
             return text
         
 
-    def prompt_chat_gpt(self, prompt : Union[list, str], context : list = [], engine : str = "text-davinci-003", temperature : int = 0.5):
-        responses = self.get_engine_func(engine)(prompt, context, engine, temperature)       
+    def prompt_chat_gpt(self, prompt : Union[list, str], context : list = [], engine : str = "text-davinci-003", temperature : int = 0.5, max_tokens=1024):
+        responses = self.get_engine_func(engine)(prompt, context, engine, temperature, max_tokens)       
         return self._postprocess(responses[0])
 
-    def prompt_chat_gpt_top_k(self, prompt : Union[list, str], context : list = [], top_k : int = 1, engine : str = "text-davinci-003", temperature : int = 0.5):
-        responses = self.get_engine_func(engine)(prompt, context, engine, temperature, n=top_k)
+    def prompt_chat_gpt_top_k(self, prompt : Union[list, str], context : list = [], top_k : int = 1, engine : str = "text-davinci-003", temperature : int = 0.5, max_tokens=1024):
+        responses = self.get_engine_func(engine)(prompt, context, engine, temperature, max_tokens, n=top_k)
         return [self._postprocess(choice) for choice in responses]
     
     
-    def _prompt_completion(self, prompt, context, engine, temperature, n=1):
+    def _prompt_completion(self, prompt, context, engine, temperature, max_tokens, n=1):
         prompt = self._text_preprocess(context, prompt)
         responses = openai.Completion.create(
             engine=engine,
             prompt=prompt,
-            max_tokens=1024,
+            max_tokens=max_tokens,
             n=n,
             stop=None,
             temperature=temperature)
         return self._text_postprocess(responses)
     
-    def _prompt_chat(self, prompt, context, engine, temperature, n=1):
+    def _prompt_chat(self, prompt, context, engine, temperature, max_tokens, n=1):
         messages = self._chat_preprocess(context, prompt)
         responses = openai.ChatCompletion.create(
             model=engine,
             messages=messages,
-            max_tokens=1024,
+            max_tokens=max_tokens,
             n=n,
             stop=None,
             temperature=temperature)

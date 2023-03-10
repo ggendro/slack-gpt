@@ -1,8 +1,10 @@
 
+from __future__ import annotations
 import re
 import json
-from typing import Optional
+from typing import Optional, Union, Tuple
 
+import tiktoken
 from client_interface import ClientInterface, OpenaiInterface
 
 class HistoryCT():
@@ -52,7 +54,7 @@ class HistoryCT():
             self.history[channel][option_name] = option_value
         self.history[channel]["threads"][thread][option_name] = option_value
 
-    
+
     def save_history(self, path: str = None):
         path = path if path is not None else self.history_save_path
         try:
@@ -70,6 +72,96 @@ class HistoryCT():
                 self.history = json.load(f)
         except Exception as e:
             print("Failed loading history:", e)
+
+
+
+class Tokensizer():
+
+    ENGINE_TOKENS = {}
+    def create(engine : str, *args, **kwargs) -> Tokensizer:
+        if engine not in Tokensizer.ENGINE_TOKENS:
+            Tokensizer.ENGINE_TOKENS[engine] = Tokensizer(engine, *args, **kwargs)
+        token = Tokensizer.ENGINE_TOKENS[engine]
+        token.setup(*args, **kwargs)
+        return token
+        
+    
+    def __init__(self, engine : str, engine_size : int, completion_size : int):
+        self.tokenizer = tiktoken.encoding_for_model(engine)
+        self.setup(engine_size, completion_size)
+
+    def setup(self, engine_size : int, completion_size : int):
+        self.engine_size = engine_size
+        self.completion_size = completion_size
+
+    def __call__(self, prompt : Union[dict, list], context : list) -> Tuple[Union[dict, list], list, int]:
+        return self.trim_size(prompt, context)
+    
+    def _extract_messages(self, message_list : Union[dict, list]) -> list:
+        if type(message_list) is not list:
+            message_list = [message_list]
+        
+        messages = []
+        for m in message_list:
+            if type(m) is dict:
+                messages.append(m["message"])
+            else:
+                messages.append(m)
+
+        return messages
+
+    def _filter_messages(self, message_list, indices) -> list:
+        return [message_list[i] for i in indices]
+
+
+    def get_size(self, prompt : Union[dict, list], context : list) -> Tuple[int, int]:
+        p_messages = self._extract_messages(prompt)
+        c_messages = self._extract_messages(context)
+
+        prompt_size = len(self.tokenizer.encode("\n".join(p_messages)))
+        context_size = len(self.tokenizer.encode("\n".join(c_messages)))
+        return prompt_size, context_size
+    
+    def within_size(self, prompt : Union[dict, list], context : list) -> bool:
+        p_messages = self._extract_messages(prompt)
+        c_messages = self._extract_messages(context)
+
+        prompt_size = len(self.tokenizer.encode("\n".join(p_messages)))
+        context_size = len(self.tokenizer.encode("\n".join(c_messages)))
+        return prompt_size + context_size + self.completion_size <= self.engine_size
+
+    def trim_size(self, prompt : Union[dict, list], context : list) -> Tuple[Union[dict, list], list, int]:
+        p_messages = self._extract_messages(prompt)
+        c_messages = self._extract_messages(context)
+
+        prompt_size = len(self.tokenizer.encode("\n".join(p_messages)))
+        context_size = len(self.tokenizer.encode("\n".join(c_messages)))
+        completion_size = self.completion_size
+
+        if prompt_size + context_size + completion_size > self.engine_size:
+            # if context is too long, trim it
+            if len(c_messages) > 1:
+                context_sizes = [len(self.tokenizer.encode(m)) for m in c_messages]
+                start_idx = 1
+                while start_idx < len(context_sizes) or (sum(context_sizes[start_idx:]) + prompt_size + self.completion_size > self.engine_size):
+                    start_idx += 1
+                c_indices = list(range(start_idx, len(c_messages)))
+                context_size = sum(context_sizes[start_idx:])
+                context = self._filter_messages(context, c_indices)
+
+            # if completion size is too big, trim it
+            if prompt_size + context_size + completion_size > self.engine_size:
+                completion_size_temp = self.engine_size - prompt_size - context_size
+                if completion_size_temp > 0:
+                    completion_size = completion_size_temp
+
+            # if prompt size is too big, raise error
+            if prompt_size + context_size + completion_size > self.engine_size:
+                raise ValueError(f"Prompt size: {prompt_size} is too big for engine size: {self.engine_size}."\
+                                + f" (prompt_size ({prompt_size}) + context_size ({context_size}) + completion_size ({completion_size}) > engine_size ({self.engine_size})).")
+
+        return prompt, context, completion_size
+
     
 
 class SlackBot():
@@ -94,6 +186,8 @@ class SlackBot():
         self.valid_engines = self.openai_client.get_engines()
         self.min_temperature = 0.0
         self.max_temperature = 1.0
+        self.min_max_tokens = 64
+        self.max_max_tokens = 4096
 
         self.history = HistoryCT(
             history_save_path="history.json", 
@@ -102,6 +196,7 @@ class SlackBot():
                 "save_users_enabled" : False,
                 "engine" : "gpt-3.5-turbo",
                 "temperature" : 0.5,
+                "max_tokens" : 1024,
             })
         self.history.load_history()
 
@@ -115,6 +210,8 @@ class SlackBot():
             "engine_thread" : self.admin_set_engine_thread,
             "temperature_channel" : self.admin_set_temperature_channel,
             "temperature_thread" : self.admin_set_temperature_thread,
+            "max_tokens_channel" : self.admin_set_max_tokens_channel,
+            "max_tokens_thread" : self.admin_set_max_tokens_thread,
         }
 
     def save_history(self):
@@ -170,8 +267,16 @@ class SlackBot():
                         {"user": prompt["user"], "message": f"{prompt['user']}: {prompt['message']}"},
                         {"user": self._tag_user(self.id), "message": f"{self._tag_user(self.id)}: "} # This is the start of the reply for the assistant
                     ]
+        
+        engine = self.history.get_option(channel, thread, "engine")
+        tokensizer = Tokensizer.create(engine, self.openai_client.get_engine_token_size(engine), self.history.get_option(channel, thread, "max_tokens"))
+        try:
+            prompt, context, max_tokens = tokensizer(prompt, context)
+        except ValueError as e:
+            self.client.send_message(channel, thread, "The prompt is too long for the current engine. Please shorten it.")
+            raise e
 
-        reply = self.openai_client.prompt_chat_gpt(prompt, context, engine=self.history.get_option(channel, thread, "engine"), temperature=self.history.get_option(channel, thread, "temperature"))
+        reply = self.openai_client.prompt_chat_gpt(prompt, context, engine=engine, temperature=self.history.get_option(channel, thread, "temperature"), max_tokens=max_tokens)
         reply = re.sub(r"^\n+", "", reply)
         
         self.client.send_message(channel, thread, reply)
@@ -210,8 +315,16 @@ class SlackBot():
                         {"user": prompt["user"], "message": f"{prompt['user']}: {prompt['message']}"},
                         {"user": self._tag_user(self.id), "message": f"{self._tag_user(self.id)}: "} # This is the start of the reply for the assistant
                     ]
+        
+        engine = self.history.get_option(channel, thread, "engine")
+        tokensizer = Tokensizer.create(engine, self.openai_client.get_engine_token_size(engine), self.history.get_option(channel, thread, "max_tokens"))
+        try:
+            prompt, context, max_tokens = tokensizer(prompt, context)
+        except ValueError as e:
+            self.client.send_message(channel, thread, "The prompt is too long for the current engine. Please shorten it.")
+            raise e
 
-        replies = self.openai_client.prompt_chat_gpt_top_k(prompt, top_k=k, engine=self.history.get_option(channel, thread, "engine"), temperature=self.history.get_option(channel, thread, "temperature"))
+        replies = self.openai_client.prompt_chat_gpt_top_k(prompt, top_k=k, engine=engine, temperature=self.history.get_option(channel, thread, "temperature"), max_tokens=max_tokens)
         replies = [re.sub(r"^\n+", "", reply) for reply in replies]
         replies_text = "\n".join([f"{i+1}. {reply}" for i, reply in enumerate(replies)])
 
@@ -248,7 +361,12 @@ class SlackBot():
                 history = [f"{self._tag_user(entry['user'])}: {entry['message']}" for entry in history]
             else:
                 history = [entry["message"] for entry in history]
-            self.client.send_message(channel, thread, "Here is my current available history:\n" + "".join(history))
+
+            engine = self.history.get_option(channel, thread, "engine")
+            max_tokens = self.openai_client.get_engine_token_size(engine)
+            _, tokens_used = Tokensizer.create(engine, self.openai_client.get_engine_token_size(engine), max_tokens).get_size([], history)
+
+            self.client.send_message(channel, thread, f"Here is my current available history (number of tokens used: {tokens_used} / {max_tokens}):\n" + "".join(history))
 
     
     def admin(self, channel, thread, prompt, user):
@@ -368,6 +486,12 @@ class SlackBot():
 
     def admin_set_temperature_thread(self, channel, thread, value=None, *args):
         self._admin_set_option_thread(channel, thread, "temperature", "Temperature", value, min_value=self.min_temperature, max_value=self.max_temperature)
+
+    def admin_set_max_tokens_channel(self, channel, thread, value=None, *args):
+        self._admin_set_option_channel(channel, thread, "max_tokens", "Max tokens", value, min_value=self.min_max_tokens, max_value=self.max_max_tokens)
+
+    def admin_set_max_tokens_thread(self, channel, thread, value=None, *args):
+        self._admin_set_option_thread(channel, thread, "max_tokens", "Max tokens", value, min_value=self.min_max_tokens, max_value=self.max_max_tokens)
 
     
 
