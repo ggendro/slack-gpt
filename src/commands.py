@@ -16,10 +16,11 @@ def handle_chat_command(command: dict[str, Any], say: Say, respond: Respond):
 
     if command["text"].lower() == "help":
         respond(
-            "Usage: ```/chat [model] [temperature] system_prompt```\n\n"
-            f"`model`: one of {', '.join(c.COMPLETION_MODELS)} (default: {c.DEFAULT_MODEL})\n"
-            "`temperature`: a number between 0 and 2 (default: 0.5)\n"
-            f'`system_prompt`: the system prompt to prime ChatGPT (default: "{c.DEFAULT_SYSTEM_PROMPT}")'
+            f"""Usage: ```/chat [model] [temperature] system_prompt```
+
+`model`: one of {', '.join(c.COMPLETION_MODELS)} (default: {c.DEFAULT_MODEL})
+`temperature`: a number between 0 and 2 (default: 0.5)
+`system_prompt`: the system prompt to prime ChatGPT (default: "{c.DEFAULT_SYSTEM_PROMPT}")"""  # noqa: E501
         )
         return
 
@@ -76,10 +77,11 @@ def handle_gpt_command(
 
     if command["text"].lower() == "help":
         respond(
-            "Usage: ```/gpt [model] [temperature] prompt```\n\n"
-            f"`model`: one of {', '.join(c.COMPLETION_MODELS)} (default: {c.DEFAULT_MODEL})\n"
-            "`temperature`: a number between 0 and 2 (default: 0.5)\n"
-            "`prompt`: the text to use as a prompt for the model"
+            f"""Usage: ```/gpt [model] [temperature] prompt```
+
+`model`: one of {', '.join(c.COMPLETION_MODELS)} (default: {c.DEFAULT_MODEL})
+`temperature`: a number between 0 and 2 (default: 0.5)
+`prompt`: the text to use as a prompt for the model"""
         )
         return
 
@@ -94,7 +96,8 @@ def handle_gpt_command(
 
     if model not in c.COMPLETION_MODELS:
         respond(
-            f"Invalid model: {model}. Valid models are: {', '.join(c.COMPLETION_MODELS)}"
+            f"Invalid model: `{model}`. Valid models are:\n"
+            f"`{'`, `'.join(c.COMPLETION_MODELS)}`"
         )
         return
     if temperature < 0 or temperature > 2:
@@ -110,7 +113,7 @@ def handle_gpt_command(
 
     params = {"model": model, "temperature": temperature}
     res = say(
-        text=f"New conversation with other GPT models: :robot_face:",
+        text="New conversation with other GPT models: :robot_face:",
         blocks=[
             {
                 "type": "header",

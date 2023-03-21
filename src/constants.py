@@ -1,6 +1,9 @@
 CHAT_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-0301"]
 DEFAULT_CHAT_MODEL = "gpt-3.5-turbo"
-DEFAULT_SYSTEM_PROMPT = "You are ChatGPT, a large language model trained by OpenAI. Answer as concisely as possible."
+DEFAULT_SYSTEM_PROMPT = (
+    "You are ChatGPT, a large language model trained by OpenAI. Answer as concisely as "
+    "possible."
+)
 
 COMPLETION_MODELS = [
     "text-davinci-003",
