@@ -7,9 +7,10 @@ from aws_lambda_powertools.logging import Logger
 from slack_sdk import WebClient
 
 import constants as c
-from keys import BOT_OAUTH_TOKEN, OPENAI_API_KEY
+from keys import BOT_OAUTH_TOKEN, OPENAI_API_KEY, OPENAI_ORG_ID
 
 openai.api_key = OPENAI_API_KEY
+openai.organization = OPENAI_ORG_ID
 logger = Logger(c.SERVICE_NAME, child=True)
 
 
