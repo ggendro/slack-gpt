@@ -15,6 +15,7 @@ logger = Logger(c.SERVICE_NAME, child=True)
 
 
 def normalise_text(text: str) -> str:
+    """Remove symbol escapes from text."""
     return text.replace("&lt;", "<").replace("&gt;", ">")
 
 
@@ -38,13 +39,13 @@ param_types = {
 def get_chat_params(param_str: str) -> dict[str, Any]:
     """Converts a string of parameters into a dictionary of parameters.
 
-    Args:
-    =====
+    Args
+    ----
     param_str: str
         A string of parameters in the format "<key1=value1,key2=value2>"
 
-    Returns:
-    ========
+    Returns
+    -------
     dict[str, Any]: A dictionary of parameters
     """
     param_str = param_str.strip("<>")
@@ -58,19 +59,30 @@ def get_chat_params(param_str: str) -> dict[str, Any]:
 def chat_params_str(params: dict[str, Any]) -> str:
     """Converts a dictionary of parameters into a string of parameters.
 
-    Args:
-    =====
+    Args
+    ----
     params: dict[str, Any]
         A dictionary of parameters.
 
-    Returns:
-    ========
+    Returns
+    -------
     str: A string of parameters in the format "<key1=value1,key2=value2>"
     """
     return "<" + ",".join(f"{key}={value}" for key, value in params.items()) + ">"
 
 
 def error_view(e: BaseException) -> dict[str, Any]:
+    """Creates a Slack view for an error.
+
+    Args
+    ----
+    e: BaseException
+        The error.
+
+    Returns
+    -------
+    dict[str, Any]: A Slack view.
+    """
     return {
         "type": "modal",
         "title": {"type": "plain_text", "text": "Edit message"},
@@ -88,7 +100,21 @@ def error_view(e: BaseException) -> dict[str, Any]:
 def log_post_error(
     e: BaseException, user: str, channel: str, thread: Optional[str], client: WebClient
 ):
-    """Logs an error and posts an ephemeral message to the user."""
+    """Logs an error and posts an ephemeral message to the user.
+
+    Args
+    ----
+    e: BaseException
+        The error.
+    user: str
+        The user's ID.
+    channel: str
+        The channel's ID.
+    thread: Optional[str]
+        The thread's ID.
+    client: WebClient
+        The Slack client.
+    """
     logger.error("Error: %s", e)
     client.chat_postEphemeral(
         text=f"An error occurred while processing your message:\n```{e}```",
@@ -99,7 +125,23 @@ def log_post_error(
 
 
 def transcribe(url: str, prompt: str, model: str, temperature: float) -> str:
-    """Transcribes an audio file using OpenAI's API."""
+    """Transcribes an audio file using OpenAI's API.
+
+    Args
+    ----
+    url: str
+        The URL of the audio file.
+    prompt: str
+        The prompt to use.
+    model: str
+        The model to use.
+    temperature: float
+        The temperature to use.
+
+    Returns
+    -------
+    str: The response from the model.
+    """
     r = requests.get(url, headers={"Authorization": f"Bearer {BOT_OAUTH_TOKEN}"})
     filename = url.split("/")[-1]
     try:
@@ -126,15 +168,15 @@ def transcribe(url: str, prompt: str, model: str, temperature: float) -> str:
 def alternate_msgs(msgs: list[str], user_starts: bool = True) -> list[dict[str, str]]:
     """Alternates between user and assistant messages.
 
-    Args:
-    =====
+    Args
+    ----
     msgs: list[str]
         A list of messages.
     user_starts: bool
         Whether the user starts the conversation or not.
 
-    Returns:
-    ========
+    Returns
+    -------
     list[dict[str, str]]: A list of messages with the role of the sender.
     """
     messages = []
@@ -151,7 +193,25 @@ def alternate_msgs(msgs: list[str], user_starts: bool = True) -> list[dict[str, 
 def chat(
     messages: list[str], system_msg: str, model: str, temperature: float, user: str
 ) -> str:
-    """Uses OpenAI's API to chat with a user."""
+    """Uses OpenAI's API to chat with a user.
+
+    Args
+    ----
+    messages: list[str]
+        A list of messages alternating between user and assistant.
+    system_msg: str
+        The initial system message.
+    model: str
+        The model to use.
+    temperature: float
+        The temperature to use.
+    user: str
+        The user's ID.
+
+    Returns
+    -------
+    str: The response from the model.
+    """
     messages_dict = alternate_msgs(messages)
     try:
         response = (
@@ -183,7 +243,23 @@ def chat(
 
 
 def completion(prompt: str, model: str, temperature: float, user: str) -> str:
-    """Uses OpenAI's API to complete a prompt."""
+    """Uses OpenAI's API to complete a prompt.
+
+    Args
+    ----
+    prompt: str
+        The prompt to complete.
+    model: str
+        The model to use.
+    temperature: float
+        The temperature to use.
+    user: str
+        The user's ID.
+
+    Returns
+    -------
+    str: The response from the model.
+    """
     try:
         response = (
             openai.Completion.create(
@@ -213,7 +289,25 @@ def completion(prompt: str, model: str, temperature: float, user: str) -> str:
 def edit(
     prompt: str, model: str, instruction: str, temperature: float, n: int
 ) -> list[str]:
-    """Uses OpenAI's API to edit a prompt."""
+    """Uses OpenAI's API to edit a prompt.
+
+    Args
+    ----
+    prompt: str
+        The prompt to edit.
+    model: str
+        The model to use.
+    instruction: str
+        The editing instructions.
+    temperature: float
+        The temperature to use.
+    n: int
+        The number of choices to return.
+
+    Returns
+    -------
+    list[str]: The responses from the model.
+    """
     try:
         choices = openai.Edit.create(
             model=model,
