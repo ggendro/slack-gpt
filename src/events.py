@@ -76,7 +76,7 @@ def handle_message(event: dict[str, Any], say: Say, client: WebClient):
         return
     if event["parent_user_id"] != c.BOT_USER_ID:
         # Not a reply to ourself
-        logger.info("Not a reply to ourself: ", event["parent_user_id"])
+        logger.info("Not a reply to ourself. Thread user: %s", event["parent_user_id"])
         return
     if event["user"] == c.BOT_USER_ID:
         # Don't reply to our own messages
