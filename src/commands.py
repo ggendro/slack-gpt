@@ -24,7 +24,7 @@ def handle_chat_command(command: dict[str, Any], say: Say, respond: Respond):
         )
         return
 
-    match = re.match(r"^([a-z0-9-]+ )?(\d\.?\d* )?(.*)$", command["text"], re.DOTALL)
+    match = re.match(r"^([a-z0-9-.]+ ?)?(\d\.?\d* ?)?(.*)$", command["text"], re.DOTALL)
     if not match:
         respond("Invalid command. Usage: /chat [model] [temperature] system_prompt")
         return
