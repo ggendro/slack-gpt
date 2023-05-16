@@ -10,7 +10,7 @@ Resources:
       CodeUri: ./src
       Description: Slack bot Event API responder
       MemorySize: 128
-      Timeout: 30
+      Timeout: 60
       FunctionUrlConfig:
         AuthType: NONE
       Environment:
@@ -27,8 +27,11 @@ Resources:
         PingEvent:
           Type: ScheduleV2
           Properties:
-            ScheduleExpression: rate(2 minutes)
-            Description: Ping the Slack bot every couple of minutes.
+            ScheduleExpression: rate(4 minutes)
+            Description: Ping the Slack bot every few minutes.
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 60
+        MaximumRetryAttempts: 0
 Parameters:
   LogLevel:
     Type: String

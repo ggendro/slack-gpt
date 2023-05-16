@@ -1,3 +1,4 @@
 openai
 slack-bolt
 slack-sdk
+urllib3<2

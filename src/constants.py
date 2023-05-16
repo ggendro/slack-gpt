@@ -1,8 +1,8 @@
-CHAT_MODELS = ["gpt-3.5-turbo", "gpt-3.5-turbo-0301"]
-DEFAULT_CHAT_MODEL = "gpt-3.5-turbo"
+CHAT_MODELS = ["gpt-4", "gpt-4-0314", "gpt-3.5-turbo", "gpt-3.5-turbo-0301"]
+DEFAULT_CHAT_MODEL = "gpt-4"
 DEFAULT_SYSTEM_PROMPT = (
-    "You are ChatGPT, a large language model trained by OpenAI. Answer as concisely as "
-    "possible."
+    "You are GPT-4, a powerful large language model trained by OpenAI. Answer as "
+    "concisely as possible."
 )
 
 COMPLETION_MODELS = [
