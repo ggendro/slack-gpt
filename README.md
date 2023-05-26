@@ -23,7 +23,7 @@ $ pip install aws-lambda-powertools
 You also need to install the AWS SAM CLI. See the instructions
 [here](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
 
-### Tokens
+### API keys and tokens
 It is necessary to have API tokens to connect the bot to the workspace,
 they can be obtained [here](https://api.slack.com/). Link this server to
 an existing one or crete a new one and give it the proper authorisations
@@ -31,8 +31,12 @@ as described in this
 [page](https://medium.com/@alexandre.tkint/integrate-openais-chatgpt-within-slack-a-step-by-step-approach-bea43400d311).
 
 An OpenAI API key is also required and can be obtained
-[here](https://platform.openai.com/docs/quickstart). Once obtained, it
-must be pasted under <openai_api_key> as described in the usage section.
+[here](https://platform.openai.com/docs/quickstart).
+
+Once obtained, put the API keys and tokens into the AWS Systems Manager
+Parameter Store, under a common prefix (e.g. `/slack-gpt-bot`). These
+keys will be obtained automatically upon the app being loaded by AWS
+Lambda. See [`src/keys.py`](src/keys.py) for details.
 
 ## Running on AWS
 You will need to have an AWS account, and have set up the necessary
