@@ -10,7 +10,7 @@ Resources:
       CodeUri: ./src
       Description: Slack bot Event API responder
       MemorySize: 128
-      Timeout: 60
+      Timeout: 120
       FunctionUrlConfig:
         AuthType: NONE
       Environment:

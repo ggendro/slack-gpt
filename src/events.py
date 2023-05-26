@@ -114,6 +114,9 @@ def handle_message(event: dict[str, Any], say: Say, client: WebClient):
     except RuntimeError as e:
         log_post_error(e, event["user"], event["channel"], event["thread_ts"], client)
         return
+
+    if model in ["code-davinci-002", "code-cushman-001"]:
+        response_text = f"```{response_text}```"
     logger.info("reply: %s", response_text)
     say(response_text, thread_ts=event["thread_ts"])
 
