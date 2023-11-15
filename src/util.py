@@ -1,9 +1,16 @@
+import base64
 from io import BytesIO
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import openai
 import requests
 from aws_lambda_powertools.logging import Logger
+from openai.types.chat import (
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 from slack_sdk import WebClient
 
 import constants as c
@@ -124,6 +131,75 @@ def log_post_error(
     )
 
 
+def image(prompt: str, model: str, user: str) -> bytes:
+    """Generates an image with DALL-E.
+
+    Args
+    ----
+    prompt: str
+        The image prompt.
+    model: str
+        The image generation model to use.
+    user: str
+        The user's ID.
+
+    Returns
+    -------
+    bytes: The image data
+    """
+    try:
+        response = (
+            openai.images.generate(
+                prompt=prompt,
+                model=model,
+                n=1,
+                response_format="b64_json",
+                size="1024x1024",
+                user=user,
+            )
+            .data[0]
+            .b64_json
+        )
+    except openai.APIError as e:
+        logger.error("OpenAI Error: %s", e)
+        raise RuntimeError(f"OpenAI Error {e.code}: {e.message}") from e
+    if response is None:
+        raise RuntimeError("No image content")
+    image_bytes = base64.decodebytes(response.encode())
+    return image_bytes
+
+
+def tts(
+    text: str,
+    model: str,
+    voice: Literal["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+) -> bytes:
+    """Generates a TTS (text-to-speech) audio from the given text using
+    OpenAI's speech API.
+
+    Args
+    ----
+    text: str
+        The text to generate speech for.
+    model: str
+        The model to use
+    voice: str
+        The voice to use.
+
+    Returns
+    -------
+    bytes: The audio response from the model.
+    """
+    try:
+        response = openai.audio.speech.create(
+            input=text, model=model, voice=voice, response_format="mp3", speed=1.0
+        ).read()
+    except openai.APIError as e:
+        logger.error("OpenAI Error: %s", e)
+        raise RuntimeError(f"OpenAI Error {e.code}: {e.message}") from e
+    return response
+
+
 def transcribe(url: str, prompt: str, model: str, temperature: float) -> str:
     """Transcribes an audio file using OpenAI's API.
 
@@ -143,21 +219,17 @@ def transcribe(url: str, prompt: str, model: str, temperature: float) -> str:
     str: The response from the model.
     """
     r = requests.get(url, headers={"Authorization": f"Bearer {BOT_OAUTH_TOKEN}"})
-    filename = url.split("/")[-1]
     try:
         with BytesIO(r.content) as file:
-            response = openai.Audio.transcribe_raw(
+            response = openai.audio.transcriptions.create(
                 model=model,
                 file=file,
-                filename=filename,
                 temperature=temperature,
                 prompt=prompt,
             ).text
-    except openai.OpenAIError as e:
+    except openai.APIError as e:
         logger.error("OpenAI Error: %s", e)
-        raise RuntimeError(
-            f"OpenAI Error: HTTP {e.http_status}: {e.user_message}"
-        ) from e
+        raise RuntimeError(f"OpenAI Error {e.code}: {e.message}") from e
     if len(response) == 0:
         logger.warning("Empty GPT response.")
         response = "<|endoftext|>"
@@ -165,7 +237,9 @@ def transcribe(url: str, prompt: str, model: str, temperature: float) -> str:
     return response
 
 
-def alternate_msgs(msgs: list[str], user_starts: bool = True) -> list[dict[str, str]]:
+def create_msgs(
+    msgs: list[str], system_prompt: str, user_starts: bool = True
+) -> list[ChatCompletionMessageParam]:
     """Alternates between user and assistant messages.
 
     Args
@@ -179,15 +253,12 @@ def alternate_msgs(msgs: list[str], user_starts: bool = True) -> list[dict[str, 
     -------
     list[dict[str, str]]: A list of messages with the role of the sender.
     """
-    messages = []
-    for i, msg in enumerate(msgs):
-        messages.append(
-            {
-                "role": "user" if i % 2 == int(user_starts) else "assistant",
-                "content": msg,
-            }
-        )
-    return messages
+    return [ChatCompletionSystemMessageParam(role="system", content=system_prompt)] + [
+        ChatCompletionUserMessageParam(content=msg, role="user")
+        if i % 2 == int(user_starts)
+        else ChatCompletionAssistantMessageParam(content=msg, role="assistant")
+        for i, msg in enumerate(msgs)
+    ]  # type: ignore
 
 
 def chat(
@@ -212,15 +283,11 @@ def chat(
     -------
     str: The response from the model.
     """
-    messages_dict = alternate_msgs(messages)
     try:
         response = (
-            openai.ChatCompletion.create(
+            openai.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": system_msg},
-                ]
-                + messages_dict,
+                messages=create_msgs(messages, system_msg),
                 # max_tokens=1024,
                 n=1,
                 stop=None,
@@ -230,12 +297,10 @@ def chat(
             .choices[0]
             .message.content
         )
-    except openai.OpenAIError as e:
+    except openai.APIError as e:
         logger.error("OpenAI Error: %s", e)
-        raise RuntimeError(
-            f"OpenAI Error: HTTP {e.http_status}: {e.user_message}"
-        ) from e
-    if len(response) == 0:
+        raise RuntimeError(f"OpenAI Error {e.code}: {e.message}") from e
+    if response is None or len(response) == 0:
         logger.warning("Empty GPT response.")
         response = "<|endoftext|>"
     logger.info("GPT Response: %s", response)
@@ -262,7 +327,7 @@ def completion(prompt: str, model: str, temperature: float, user: str) -> str:
     """
     try:
         response = (
-            openai.Completion.create(
+            openai.completions.create(
                 model=model,
                 prompt=prompt,
                 max_tokens=1024,
@@ -274,11 +339,9 @@ def completion(prompt: str, model: str, temperature: float, user: str) -> str:
             .choices[0]
             .text
         )
-    except openai.OpenAIError as e:
+    except openai.APIError as e:
         logger.error("OpenAI Error: %s", e)
-        raise RuntimeError(
-            f"OpenAI Error: HTTP {e.http_status}: {e.user_message}"
-        ) from e
+        raise RuntimeError(f"OpenAI Error {e.code}: {e.message}") from e
     if len(response) == 0:
         logger.warning("Empty GPT response.")
         response = "<|endoftext|>"
@@ -309,18 +372,16 @@ def edit(
     list[str]: The responses from the model.
     """
     try:
-        choices = openai.Edit.create(
+        choices = openai.edits.create(
             model=model,
             input=prompt,
             instruction=instruction,
             n=n,
             temperature=temperature,
         ).choices
-    except openai.OpenAIError as e:
+    except openai.APIError as e:
         logger.error("OpenAI Error: %s", e)
-        raise RuntimeError(
-            f"OpenAI Error: HTTP {e.http_status}: {e.user_message}"
-        ) from e
-    choices = [choice.text for choice in choices]
-    logger.info("GPT Response: %s", choices)
-    return choices
+        raise RuntimeError(f"OpenAI Error {e.code}: {e.message}") from e
+    edits_text = [choice.text for choice in choices]
+    logger.info("GPT Response: %s", edits_text)
+    return edits_text

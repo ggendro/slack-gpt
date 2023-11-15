@@ -1,4 +1,5 @@
-openai
-slack-bolt
-slack-sdk
-urllib3<2
+openai~=1.2.3
+slack-bolt~=1.18.0
+slack-sdk~=3.23.0
+urllib3<2.1
+requests

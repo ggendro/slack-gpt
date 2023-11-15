@@ -5,7 +5,7 @@ from slack_bolt import Ack, App, Say
 from slack_sdk import WebClient
 
 import constants as c
-from util import completion, edit, error_view, log_post_error, transcribe
+from util import completion, edit, error_view, log_post_error, transcribe, tts
 
 
 def respond_message(shortcut: dict[str, Any], client: WebClient):
@@ -38,8 +38,11 @@ def respond_message(shortcut: dict[str, Any], client: WebClient):
                             for x in c.COMPLETION_MODELS
                         ],
                         "initial_option": {
-                            "text": {"type": "plain_text", "text": c.DEFAULT_MODEL},
-                            "value": c.DEFAULT_MODEL,
+                            "text": {
+                                "type": "plain_text",
+                                "text": c.DEFAULT_COMPLETION_MODEL,
+                            },
+                            "value": c.DEFAULT_COMPLETION_MODEL,
                         },
                     },
                 },
@@ -345,14 +348,14 @@ def transcribe_audio(shortcut: dict[str, Any], client: WebClient):
                         "action_id": "model_select_action",
                         "options": [
                             {"text": {"type": "plain_text", "text": x}, "value": x}
-                            for x in c.AUDIO_MODELS
+                            for x in c.ASR_MODELS
                         ],
                         "initial_option": {
                             "text": {
                                 "type": "plain_text",
-                                "text": c.DEFAULT_AUDIO_MODEL,
+                                "text": c.DEFAULT_ASR_MODEL,
                             },
-                            "value": c.DEFAULT_AUDIO_MODEL,
+                            "value": c.DEFAULT_ASR_MODEL,
                         },
                     },
                 },
@@ -410,6 +413,100 @@ def transcribe_audio_submit_lazy(view: dict[str, Any], say: Say):
     )
 
 
+def generate_tts(shortcut: dict[str, Any], client: WebClient):
+    channel_id = shortcut["channel"]["id"]
+    ts = shortcut["message"]["ts"]
+    client.views_open(
+        trigger_id=shortcut["trigger_id"],
+        view={
+            "type": "modal",
+            "title": {"type": "plain_text", "text": "Text-to-speech"},
+            "callback_id": "generate_tts_view",
+            "private_metadata": channel_id + "," + ts,
+            "blocks": [
+                {
+                    "type": "context",
+                    "elements": [
+                        {"type": "plain_text", "text": shortcut["message"]["text"]}
+                    ],
+                },
+                {"type": "divider"},
+                {
+                    "type": "input",
+                    "block_id": "model_select",
+                    "label": {"type": "plain_text", "text": "Model"},
+                    "element": {
+                        "type": "static_select",
+                        "action_id": "model_select_action",
+                        "options": [
+                            {"text": {"type": "plain_text", "text": x}, "value": x}
+                            for x in c.TTS_MODELS
+                        ],
+                        "initial_option": {
+                            "text": {
+                                "type": "plain_text",
+                                "text": c.DEFAULT_TTS_MODEL,
+                            },
+                            "value": c.DEFAULT_TTS_MODEL,
+                        },
+                    },
+                },
+                {
+                    "type": "input",
+                    "block_id": "voice_select",
+                    "label": {"type": "plain_text", "text": "Voice"},
+                    "element": {
+                        "type": "static_select",
+                        "action_id": "voice_select_action",
+                        "options": [
+                            {"text": {"type": "plain_text", "text": x}, "value": x}
+                            for x in c.TTS_VOICES
+                        ],
+                        "initial_option": {
+                            "text": {
+                                "type": "plain_text",
+                                "text": c.DEFAULT_TTS_VOICE,
+                            },
+                            "value": c.DEFAULT_TTS_VOICE,
+                        },
+                    },
+                },
+            ],
+            "submit": {"type": "plain_text", "text": "Generate TTS"},
+        },
+    )
+
+
+def generate_tts_submit_lazy(
+    view: dict[str, Any], body: dict[str, Any], client: WebClient
+):
+    values = view["state"]["values"]
+    model = values["model_select"]["model_select_action"]["selected_option"]["value"]
+    voice = values["voice_select"]["voice_select_action"]["selected_option"]["value"]
+
+    channel_id, ts = view["private_metadata"].split(",")
+
+    res = client.conversations_replies(
+        channel=channel_id, ts=ts, inclusive=True, oldest=ts, limit=1
+    )
+    text = res["messages"][0]["text"]
+    thread_ts = res["messages"][0].get("thread_ts", ts)
+
+    try:
+        audio_content = tts(text, model, voice)
+    except RuntimeError as e:
+        log_post_error(e, body["user"]["id"], channel_id, thread_ts, client)
+        return
+
+    client.files_upload_v2(
+        file=audio_content,
+        filename=f"audio_{ts}.mp3",
+        title="Generated speech",
+        channel=channel_id,
+        thread_ts=thread_ts,
+    )
+
+
 def init_shortcuts(app: App):
     app.message_shortcut("respond_message")(
         ack=lambda ack: ack(), lazy=[respond_message]
@@ -432,4 +529,9 @@ def init_shortcuts(app: App):
     app.view_submission("transcribe_audio_view")(
         ack=lambda ack: ack(response_action="clear"),
         lazy=[transcribe_audio_submit_lazy],
+    )
+
+    app.message_shortcut("generate_tts")(ack=lambda ack: ack(), lazy=[generate_tts])
+    app.view_submission("generate_tts_view")(
+        ack=lambda ack: ack(response_action="clear"), lazy=[generate_tts_submit_lazy]
     )

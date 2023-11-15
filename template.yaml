@@ -6,7 +6,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.lambda_handler
-      Runtime: python3.9
+      Runtime: python3.11
       CodeUri: ./src
       Description: Slack bot Event API responder
       MemorySize: 128
@@ -17,7 +17,7 @@ Resources:
         Variables:
           LOG_LEVEL: !Ref LogLevel
       Layers:
-        - arn:aws:lambda:ap-southeast-2:017000801446:layer:AWSLambdaPowertoolsPythonV2:19
+        - arn:aws:lambda:ap-southeast-2:017000801446:layer:AWSLambdaPowertoolsPythonV2:47
       Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/SlackGPTBotRole"
       Policies:
         - LambdaInvokePolicy:
@@ -27,7 +27,7 @@ Resources:
         PingEvent:
           Type: ScheduleV2
           Properties:
-            ScheduleExpression: rate(4 minutes)
+            ScheduleExpression: rate(5 minutes)
             Description: Ping the Slack bot every few minutes.
       EventInvokeConfig:
         MaximumEventAgeInSeconds: 60
