@@ -5,12 +5,7 @@ from typing import Any, Literal, Optional
 import openai
 import requests
 from aws_lambda_powertools.logging import Logger
-from openai.types.chat import (
-    ChatCompletionAssistantMessageParam,
-    ChatCompletionMessageParam,
-    ChatCompletionSystemMessageParam,
-    ChatCompletionUserMessageParam,
-)
+from openai.types.chat import ChatCompletionMessageParam
 from slack_sdk import WebClient
 
 import constants as c
@@ -165,7 +160,7 @@ def image(prompt: str, model: str, user: str) -> bytes:
         raise RuntimeError(f"OpenAI Error {e.code}: {e.message}") from e
     if response is None:
         raise RuntimeError("No image content")
-    image_bytes = base64.decodebytes(response.encode())
+    image_bytes = base64.b64decode(response)
     return image_bytes
 
 
@@ -237,41 +232,25 @@ def transcribe(url: str, prompt: str, model: str, temperature: float) -> str:
     return response
 
 
-def create_msgs(
-    msgs: list[str], system_prompt: str, user_starts: bool = True
-) -> list[ChatCompletionMessageParam]:
-    """Alternates between user and assistant messages.
-
-    Args
-    ----
-    msgs: list[str]
-        A list of messages.
-    user_starts: bool
-        Whether the user starts the conversation or not.
-
-    Returns
-    -------
-    list[dict[str, str]]: A list of messages with the role of the sender.
-    """
-    return [ChatCompletionSystemMessageParam(role="system", content=system_prompt)] + [
-        ChatCompletionUserMessageParam(content=msg, role="user")
-        if i % 2 == int(user_starts)
-        else ChatCompletionAssistantMessageParam(content=msg, role="assistant")
-        for i, msg in enumerate(msgs)
-    ]  # type: ignore
+def get_img(url: str) -> str:
+    r = requests.get(url, headers={"Authorization": f"Bearer {BOT_OAUTH_TOKEN}"})
+    img_type = r.headers["content-type"]
+    b64 = base64.b64encode(r.content).decode()
+    return f"data:{img_type};base64,{b64}"
 
 
 def chat(
-    messages: list[str], system_msg: str, model: str, temperature: float, user: str
+    messages: list[ChatCompletionMessageParam],
+    model: str,
+    temperature: float,
+    user: str,
 ) -> str:
     """Uses OpenAI's API to chat with a user.
 
     Args
     ----
-    messages: list[str]
-        A list of messages alternating between user and assistant.
-    system_msg: str
-        The initial system message.
+    messages: list[ChatCompletionMessageParam]
+        A list of messages between user and assistant, which may include image URLs.
     model: str
         The model to use.
     temperature: float
@@ -283,14 +262,15 @@ def chat(
     -------
     str: The response from the model.
     """
+    logger.info(f"Processed messages: {messages}")
     try:
         response = (
             openai.chat.completions.create(
                 model=model,
-                messages=create_msgs(messages, system_msg),
-                # max_tokens=1024,
+                messages=messages,
+                # max_tokens is by default set to 35 for the gpt-4 vision model
+                max_tokens=1024 if model == "gpt-4-vision-preview" else None,
                 n=1,
-                stop=None,
                 temperature=temperature,
                 user=f"sail-gpt-bot-{user}",
             )

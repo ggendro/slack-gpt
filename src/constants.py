@@ -18,6 +18,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "You are GPT-4, a powerful large language model trained by OpenAI. Answer as "
     "concisely as possible."
 )
+VALID_IMAGE_TYPES = ["jpg", "jpeg", "webp", "png", "gif"]
 
 COMPLETION_MODELS = [
     "gpt-3.5-turbo-instruct",

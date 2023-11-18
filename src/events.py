@@ -6,7 +6,15 @@ from slack_bolt import App, Say
 from slack_sdk import WebClient
 
 import constants as c
-from util import chat, completion, get_chat_params, log_post_error, normalise_text
+from util import (
+    ChatCompletionMessageParam,
+    chat,
+    completion,
+    get_chat_params,
+    get_img,
+    log_post_error,
+    normalise_text,
+)
 
 logger = Logger(c.SERVICE_NAME, child=True)
 
@@ -67,7 +75,10 @@ def _find_paramters(message: dict[str, Any]) -> tuple[dict[str, Any], str]:
 # This gets activated on messages in subscribed channels
 def handle_message(event: dict[str, Any], say: Say, client: WebClient):
     if (
-        ("subtype" in event and event["subtype"] != "message_replied")
+        (
+            "subtype" in event
+            and event["subtype"] not in ["message_replied", "file_share"]
+        )
         or "thread_ts" not in event
         or event["thread_ts"] == event["ts"]
     ):
@@ -94,21 +105,42 @@ def handle_message(event: dict[str, Any], say: Say, client: WebClient):
     model = params["model"]
     temperature = params["temperature"]
 
-    thread = [normalise_text(msg["text"]) for msg in messages[1:] if "text" in msg]
-    logger.info("thread: %s", thread)
-    if model in c.COMPLETION_MODELS:
-        prompt = "\n".join([orig_prompt] + thread)
-    else:  # model in CHAT_MODELS
-        prompt = orig_prompt
-    if len(prompt) == 0:
-        logger.error("Empty thread.")
-        return
-
     try:
         if model in c.COMPLETION_MODELS:
+            prompt = "\n".join([orig_prompt] + [msg["text"] for msg in messages[1:]])
             response_text = completion(prompt, model, temperature, event["user"])
         else:  # model in CHAT_MODELS
-            response_text = chat(thread, prompt, model, temperature, event["user"])
+            thread: list[ChatCompletionMessageParam] = [
+                {"role": "system", "content": orig_prompt}
+            ]
+            for msg in messages[1:]:
+                text = normalise_text(msg["text"])
+                if msg["user"] == c.BOT_USER_ID:
+                    thread.append({"content": text, "role": "assistant"})
+                    continue
+
+                image_urls = []
+                for file in msg.get("files", []):
+                    if (
+                        file["mimetype"].startswith("image")
+                        or file["filetype"] in c.VALID_IMAGE_TYPES
+                    ):
+                        image_urls.append(file["url_private"])
+
+                if len(image_urls) == 0:
+                    thread.append({"content": text, "role": "user"})
+                    continue
+
+                # One or more valid images
+                content = [{"text": text, "type": "text"}] + [
+                    {"image_url": {"url": get_img(url)}, "type": "image_url"}
+                    for url in image_urls
+                ]
+                thread.append({"content": content, "role": "user"})  # type: ignore
+
+            logger.info("thread: %s", thread)
+
+            response_text = chat(thread, model, temperature, event["user"])
     except RuntimeError as e:
         log_post_error(e, event["user"], event["channel"], event["thread_ts"], client)
         return
