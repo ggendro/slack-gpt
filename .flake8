@@ -1,7 +1,5 @@
 [flake8]
 max-line-length = 88
-extend-ignore = E741, # ambiguous variable name
-                W503, # line-break before binary operator
-                E203
+extend-ignore = E741, W503, E203
 extend-exclude =
     .venv
